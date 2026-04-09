@@ -16,10 +16,12 @@ class DeviceLoginScreen extends StatefulWidget {
 }
 
 class _DeviceLoginScreenState extends State<DeviceLoginScreen> {
+  final _apiBaseUrl = TextEditingController();
   final _deviceCode = TextEditingController();
   final _deviceName = TextEditingController();
   final _secret = TextEditingController();
 
+  final _apiBaseFocus = FocusNode();
   final _codeFocus = FocusNode();
   final _nameFocus = FocusNode();
   final _secretFocus = FocusNode();
@@ -31,7 +33,9 @@ class _DeviceLoginScreenState extends State<DeviceLoginScreen> {
   @override
   void initState() {
     super.initState();
+    _apiBaseUrl.text = ApiConfig.baseUrl;
     _loadPrefill();
+    _apiBaseFocus.addListener(_onFocus);
     _codeFocus.addListener(_onFocus);
     _nameFocus.addListener(_onFocus);
     _secretFocus.addListener(_onFocus);
@@ -46,9 +50,14 @@ class _DeviceLoginScreenState extends State<DeviceLoginScreen> {
     final remember = await s.getRememberDevice();
     final code = await s.getDeviceCode();
     final name = await s.getDeviceDisplayName();
+    final savedApi = await s.getApiBaseUrl();
     if (!mounted) return;
     setState(() {
       _remember = remember;
+      if (savedApi != null && savedApi.isNotEmpty) {
+        ApiConfig.setRuntimeBaseUrl(savedApi);
+        _apiBaseUrl.text = ApiConfig.baseUrl;
+      }
       if (code != null && code.isNotEmpty) {
         _deviceCode.text = code;
       }
@@ -58,11 +67,44 @@ class _DeviceLoginScreenState extends State<DeviceLoginScreen> {
     });
   }
 
+  Future<void> _saveApiBaseUrl() async {
+    final raw = _apiBaseUrl.text.trim();
+    if (raw.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Enter your API URL (e.g. http://192.168.1.10:3000)')),
+        );
+      }
+      return;
+    }
+    ApiConfig.setRuntimeBaseUrl(raw);
+    await LocalStorage().saveApiBaseUrl(ApiConfig.baseUrl);
+    _apiBaseUrl.text = ApiConfig.baseUrl;
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Saved API: ${ApiConfig.baseUrl}')),
+    );
+  }
+
+  Future<void> _resetApiBaseUrl() async {
+    await LocalStorage().clearApiBaseUrl();
+    ApiConfig.setRuntimeBaseUrl(null);
+    _apiBaseUrl.text = ApiConfig.baseUrl;
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Reset to build default: ${ApiConfig.baseUrl}')),
+    );
+  }
+
   bool get _keypadTargetsSecret =>
-      _secretFocus.hasFocus || (!_codeFocus.hasFocus && !_nameFocus.hasFocus);
+      !_apiBaseFocus.hasFocus &&
+      (_secretFocus.hasFocus ||
+          (!_codeFocus.hasFocus && !_nameFocus.hasFocus));
 
   void _appendKey(String ch) {
-    if (_nameFocus.hasFocus) return;
+    if (_apiBaseFocus.hasFocus || _nameFocus.hasFocus) return;
     if (_codeFocus.hasFocus) {
       _deviceCode.text = _deviceCode.text + ch;
       _deviceCode.selection = TextSelection.collapsed(
@@ -75,7 +117,7 @@ class _DeviceLoginScreenState extends State<DeviceLoginScreen> {
   }
 
   void _backspace() {
-    if (_nameFocus.hasFocus) return;
+    if (_apiBaseFocus.hasFocus || _nameFocus.hasFocus) return;
     if (_codeFocus.hasFocus) {
       final t = _deviceCode.text;
       if (t.isEmpty) return;
@@ -134,12 +176,15 @@ class _DeviceLoginScreenState extends State<DeviceLoginScreen> {
 
   @override
   void dispose() {
+    _apiBaseFocus.removeListener(_onFocus);
     _codeFocus.removeListener(_onFocus);
     _nameFocus.removeListener(_onFocus);
     _secretFocus.removeListener(_onFocus);
+    _apiBaseUrl.dispose();
     _deviceCode.dispose();
     _deviceName.dispose();
     _secret.dispose();
+    _apiBaseFocus.dispose();
     _codeFocus.dispose();
     _nameFocus.dispose();
     _secretFocus.dispose();
@@ -153,6 +198,44 @@ class _DeviceLoginScreenState extends State<DeviceLoginScreen> {
     Widget fields = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        Text(
+          'API server',
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+        ),
+        const SizedBox(height: 6),
+        TextField(
+          controller: _apiBaseUrl,
+          focusNode: _apiBaseFocus,
+          keyboardType: TextInputType.url,
+          autocorrect: false,
+          style: const TextStyle(fontSize: 18),
+          decoration: _bigDeco(
+            context,
+            'API base URL',
+            hint: 'http://192.168.1.10:3000',
+          ).copyWith(
+            helperText: 'No /v1 — same URL that works for …/v1/health in the browser',
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: _loading ? null : _saveApiBaseUrl,
+                child: const Text('Save URL'),
+              ),
+            ),
+            const SizedBox(width: 10),
+            TextButton(
+              onPressed: _loading ? null : _resetApiBaseUrl,
+              child: const Text('Use default'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
         TextField(
           controller: _deviceCode,
           focusNode: _codeFocus,
@@ -228,9 +311,11 @@ class _DeviceLoginScreenState extends State<DeviceLoginScreen> {
     );
 
     final keypadHint = Text(
-      _keypadTargetsSecret
-          ? 'Keypad adds to pairing secret (0–9, A–F). Tap device code to edit code.'
-          : 'Keypad adds to device code. Tap secret field for pairing key.',
+      _apiBaseFocus.hasFocus
+          ? 'Use the keyboard for the API URL. Tap device code or secret for the keypad.'
+          : _keypadTargetsSecret
+              ? 'Keypad adds to pairing secret (0–9, A–F). Tap device code to edit code.'
+              : 'Keypad adds to device code. Tap secret field for pairing key.',
       style: Theme.of(context).textTheme.bodySmall,
     );
 

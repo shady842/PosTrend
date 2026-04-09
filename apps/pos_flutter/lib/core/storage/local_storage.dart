@@ -119,6 +119,22 @@ class LocalStorage {
     await p.remove(AppConstants.deviceDisplayNameKey);
   }
 
+  /// API origin without path, e.g. `http://192.168.1.10:3000` (no `/v1`).
+  Future<void> saveApiBaseUrl(String url) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setString(AppConstants.apiBaseUrlKey, url.trim());
+  }
+
+  Future<String?> getApiBaseUrl() async {
+    final p = await SharedPreferences.getInstance();
+    return p.getString(AppConstants.apiBaseUrlKey);
+  }
+
+  Future<void> clearApiBaseUrl() async {
+    final p = await SharedPreferences.getInstance();
+    await p.remove(AppConstants.apiBaseUrlKey);
+  }
+
   Future<void> clearSession() async {
     final p = await SharedPreferences.getInstance();
     await p.remove(AppConstants.jwtKey);

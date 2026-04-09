@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import '../../core/config/api_config.dart';
 import '../../core/storage/local_storage.dart';
 import '../../services/pos_realtime_sync.dart';
-import 'printing/printer_settings_screen.dart';
+import 'api_url_editor.dart';
 import 'device_login_screen.dart';
+import 'printing/printer_settings_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -18,6 +20,17 @@ class SettingsScreen extends StatelessWidget {
           children: [
             const Text('Device settings and POS hardware preferences.'),
             const SizedBox(height: 16),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('API server URL'),
+              subtitle: Text(
+                ApiConfig.baseUrl,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+              ),
+              trailing: const Icon(Icons.edit),
+              onTap: () => showApiUrlEditor(context),
+            ),
+            const SizedBox(height: 8),
             ElevatedButton.icon(
               onPressed: () {
                 Navigator.of(context).push(

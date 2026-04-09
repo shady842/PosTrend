@@ -1,11 +1,39 @@
-/// API base URL without trailing slash.
-/// Override at build time, e.g.:
-/// `flutter run --dart-define=API_BASE_URL=http://192.168.1.5:3000`
+/// API base URL without trailing slash and without `/v1`.
+///
+/// Priority: saved URL on device (see device login / settings) →
+/// `--dart-define=API_BASE_URL=...` → default `http://10.0.2.2:3000` (emulator).
 class ApiConfig {
-  static const String baseUrl = String.fromEnvironment(
+  static const String _compileDefault = String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: 'http://10.0.2.2:3000',
   );
+
+  static String? _runtimeOverride;
+
+  static String _normalizeBase(String raw) {
+    var s = raw.trim();
+    while (s.endsWith('/')) {
+      s = s.substring(0, s.length - 1);
+    }
+    if (s.toLowerCase().endsWith('/v1')) {
+      s = s.substring(0, s.length - 3);
+      while (s.endsWith('/')) {
+        s = s.substring(0, s.length - 1);
+      }
+    }
+    return s;
+  }
+
+  /// Call from [main] after loading prefs, or after user saves in the app.
+  static void setRuntimeBaseUrl(String? url) {
+    if (url == null || url.trim().isEmpty) {
+      _runtimeOverride = null;
+      return;
+    }
+    _runtimeOverride = _normalizeBase(url);
+  }
+
+  static String get baseUrl => _runtimeOverride ?? _compileDefault;
 
   static String get deviceLoginUrl => '$baseUrl/v1/pos/device-login';
   static String get deviceRefreshUrl => '$baseUrl/v1/pos/device-refresh';
