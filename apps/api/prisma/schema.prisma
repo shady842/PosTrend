@@ -1,0 +1,1600 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id            String   @id @default(uuid())
+  name          String
+  slug          String   @unique
+  status        String
+  plan          String
+  planId        String?
+  trialStartsAt DateTime?
+  trialEndsAt   DateTime?
+  suspensionReason String?
+  suspendedAt   DateTime?
+  cancelledAt   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  subscriptions TenantSubscription[]
+  plans         SubscriptionPlan?  @relation(fields: [planId], references: [id])
+  concepts      Concept[]
+  users         User[]
+  branches      Branch[]
+  roles         Role[]
+  customers     Customer[]
+  promotions    Promotion[]
+  rewardTiers   RewardTier[]
+  departments   Department[]
+  employees     Employee[]
+  bankAccounts  BankAccount[]
+  assetCategories AssetCategory[]
+  assets        Asset[]
+  ocrUploads    OcrUpload[]
+  notificationPreferences NotificationPreference[]
+  superAdminAuditLogs SuperAdminAuditLog[]
+}
+
+model SuperAdminAuditLog {
+  id          String   @id @default(uuid())
+  tenantId    String
+  action      String
+  reason      String?
+  actorId     String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+}
+
+model Concept {
+  id         String   @id @default(uuid())
+  tenantId   String
+  name       String
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  branches   Branch[]
+}
+
+model Branch {
+  id           String   @id @default(uuid())
+  tenantId     String
+  conceptId    String
+  name         String
+  currency     String   @default("USD")
+  isDefault    Boolean  @default(false)
+  timezone     String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  concept      Concept  @relation(fields: [conceptId], references: [id])
+  devices      Device[]
+  floors       Floor[]
+  tables       DiningTable[]
+  tableSessions TableSession[]
+  kitchenStations KitchenStation[]
+  routingRules KitchenRoutingRule[]
+  printers    Printer[]
+  orders       Order[]
+  inventory    InventoryItem[]
+  purchaseOrders PurchaseOrder[]
+  lotTracking  LotTracking[]
+  wastageEntries WastageEntry[]
+  vendorStatements VendorStatement[]
+  vendorBranches VendorBranch[]
+  staffProfiles StaffProfile[]
+  attendanceLogs AttendanceLog[]
+  shifts       Shift[]
+  cashDrawers  CashDrawer[]
+  dayClosures  DayClosure[]
+  promotions   Promotion[]
+  employees    Employee[]
+  leaveRequests LeaveRequest[]
+  payrollRecords PayrollRecord[]
+  employeeShiftAssignments EmployeeShiftAssignment[]
+  bankAccounts  BankAccount[]
+  assets        Asset[]
+  ocrUploads    OcrUpload[]
+}
+
+model Floor {
+  id        String   @id @default(uuid())
+  tenantId  String
+  branchId  String
+  name      String
+  createdAt DateTime @default(now())
+  branch    Branch   @relation(fields: [branchId], references: [id])
+}
+
+model DiningTable {
+  id        String   @id @default(uuid())
+  tenantId  String
+  branchId  String
+  floorId   String
+  name      String
+  seats     Int      @default(2)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  branch    Branch   @relation(fields: [branchId], references: [id])
+}
+
+model TableSession {
+  id        String   @id @default(uuid())
+  tenantId  String
+  branchId  String
+  tableId   String
+  openedAt  DateTime
+  closedAt  DateTime?
+  status    String
+  branch    Branch   @relation(fields: [branchId], references: [id])
+  orders    Order[]
+}
+
+model Device {
+  id         String   @id @default(uuid())
+  tenantId   String
+  conceptId  String
+  branchId   String
+  deviceName String?
+  deviceCode String   @unique
+  deviceSecretHash String?
+  status     String
+  lastSeenAt DateTime?
+  createdAt  DateTime @default(now())
+  branch     Branch   @relation(fields: [branchId], references: [id])
+  sessions   DeviceSession[]
+}
+
+model User {
+  id         String   @id @default(uuid())
+  tenantId   String
+  conceptId  String?
+  branchId   String?
+  email      String   @unique
+  passwordHash String?
+  fullName   String
+  status     String
+  createdAt  DateTime @default(now())
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  roleAssignments UserRoleAssignment[]
+}
+
+model SuperAdminUser {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  fullName     String
+  status       String   @default("active")
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model PlatformSetting {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model DemoLead {
+  id           String   @id @default(uuid())
+  name         String
+  company      String
+  email        String
+  phone        String
+  country      String
+  businessType String
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model NewsletterSubscriber {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  source    String?
+  createdAt DateTime @default(now())
+}
+
+model BlogPost {
+  id             String   @id @default(uuid())
+  slug           String   @unique
+  title          String
+  excerpt        String?
+  content        String
+  seoTitle       String?
+  seoDescription String?
+  ogImage        String?
+  status         String   @default("draft")
+  publishedAt    DateTime?
+  authorName     String
+  authorEmail    String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  categories     BlogPostCategory[]
+  tags           BlogPostTag[]
+
+  @@index([status, publishedAt])
+}
+
+model BlogCategory {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  posts     BlogPostCategory[]
+}
+
+model BlogTag {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  posts     BlogPostTag[]
+}
+
+model BlogPostCategory {
+  id         String       @id @default(uuid())
+  postId     String
+  categoryId String
+  post       BlogPost     @relation(fields: [postId], references: [id])
+  category   BlogCategory @relation(fields: [categoryId], references: [id])
+
+  @@unique([postId, categoryId])
+}
+
+model BlogPostTag {
+  id     String   @id @default(uuid())
+  postId String
+  tagId  String
+  post   BlogPost @relation(fields: [postId], references: [id])
+  tag    BlogTag  @relation(fields: [tagId], references: [id])
+
+  @@unique([postId, tagId])
+}
+
+model SubscriptionPlan {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  trialDays   Int      @default(14)
+  priceMonthly Decimal @default(0) @db.Decimal(12, 2)
+  priceYearly  Decimal @default(0) @db.Decimal(12, 2)
+  maxConcepts Int      @default(1)
+  maxBranches Int      @default(1)
+  maxDevices  Int      @default(3)
+  maxUsers    Int      @default(5)
+  maxItems    Int      @default(1000)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  tenants     Tenant[]
+  subscriptions TenantSubscription[]
+}
+
+model TenantSubscription {
+  id              String   @id @default(uuid())
+  tenantId        String
+  planId          String
+  status          String
+  startsAt        DateTime
+  endsAt          DateTime?
+  trialEndsAt     DateTime?
+  billingProvider String?
+  providerRef     String?
+  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+  plan            SubscriptionPlan @relation(fields: [planId], references: [id])
+}
+
+model Role {
+  id        String   @id @default(uuid())
+  tenantId  String
+  code      String
+  name      String
+  scope     String
+  createdAt DateTime @default(now())
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  permissions RolePermission[]
+  assignments UserRoleAssignment[]
+  employees   Employee[]
+}
+
+model RolePermission {
+  id            String   @id @default(uuid())
+  roleId        String
+  permissionKey String
+  role          Role     @relation(fields: [roleId], references: [id])
+}
+
+model UserRoleAssignment {
+  id        String   @id @default(uuid())
+  tenantId  String
+  userId    String
+  roleId    String
+  conceptId String?
+  branchId  String?
+  user      User     @relation(fields: [userId], references: [id])
+  role      Role     @relation(fields: [roleId], references: [id])
+}
+
+model DeviceSession {
+  id              String   @id @default(uuid())
+  tenantId        String
+  deviceId        String
+  accessTokenJti  String
+  refreshTokenJti String
+  issuedAt        DateTime
+  expiresAt       DateTime
+  revokedAt       DateTime?
+  device          Device   @relation(fields: [deviceId], references: [id])
+}
+
+model MenuItem {
+  id               String   @id @default(uuid())
+  tenantId         String
+  conceptId        String
+  categoryId       String?
+  name             String
+  description      String?
+  sku              String?
+  barcode          String?
+  imageUrl         String?
+  basePrice        Decimal  @default(0) @db.Decimal(12, 2)
+  isActive         Boolean  @default(true)
+  isCombo          Boolean  @default(false)
+  kitchenStationId String?
+  availabilityJson Json?
+  scheduleJson     Json?
+  taxProfile       String?
+  serviceChargeRule String?
+  displayOrder     Int      @default(0)
+  createdAt        DateTime @default(now())
+  category         MenuCategory? @relation(fields: [categoryId], references: [id])
+  variants         ItemVariant[]
+  modifierLinks    MenuItemModifierGroup[]
+  priceOverrides   PriceList[]
+  orderItems       OrderItem[]
+  routingRules     KitchenRoutingRule[]
+  recipes          Recipe[]
+}
+
+model MenuCategory {
+  id           String   @id @default(uuid())
+  tenantId     String
+  conceptId    String
+  branchId     String?
+  name         String
+  displayOrder Int      @default(0)
+  isActive     Boolean  @default(true)
+  items        MenuItem[]
+  routingRules KitchenRoutingRule[]
+}
+
+model ItemVariant {
+  id         String   @id @default(uuid())
+  menuItemId String
+  name       String
+  price      Decimal  @db.Decimal(12, 2)
+  sku        String?
+  barcode    String?
+  isDefault  Boolean  @default(false)
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
+}
+
+model ModifierGroup {
+  id         String   @id @default(uuid())
+  tenantId   String
+  name       String
+  minSelect  Int      @default(0)
+  maxSelect  Int      @default(1)
+  isRequired Boolean  @default(false)
+  options    ModifierOption[]
+  itemLinks  MenuItemModifierGroup[]
+}
+
+model ModifierOption {
+  id              String   @id @default(uuid())
+  modifierGroupId String
+  name            String
+  price           Decimal  @db.Decimal(12, 2)
+  displayOrder    Int      @default(0)
+  modifierGroup   ModifierGroup @relation(fields: [modifierGroupId], references: [id])
+}
+
+model MenuItemModifierGroup {
+  id              String   @id @default(uuid())
+  menuItemId      String
+  modifierGroupId String
+  menuItem        MenuItem @relation(fields: [menuItemId], references: [id])
+  modifierGroup   ModifierGroup @relation(fields: [modifierGroupId], references: [id])
+}
+
+model PriceList {
+  id            String   @id @default(uuid())
+  branchId      String
+  menuItemId    String
+  priceOverride Decimal  @db.Decimal(12, 2)
+  menuItem      MenuItem @relation(fields: [menuItemId], references: [id])
+
+  @@unique([branchId, menuItemId])
+}
+
+model Order {
+  id          String      @id @default(uuid())
+  tenantId    String
+  conceptId   String
+  branchId    String
+  customerId  String?
+  tableSessionId String?
+  orderType   String      @default("TAKEAWAY")
+  orderNumber String?
+  guestCount  Int         @default(1)
+  notes       String?
+  openedBy    String?
+  openedAt    DateTime?
+  closedAt    DateTime?
+  channel     String
+  status      String
+  subtotal    Decimal     @db.Decimal(12, 2)
+  tax         Decimal     @db.Decimal(12, 2)
+  service     Decimal     @db.Decimal(12, 2)
+  total       Decimal     @db.Decimal(12, 2)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  branch      Branch      @relation(fields: [branchId], references: [id])
+  customer    Customer?   @relation(fields: [customerId], references: [id])
+  tableSession TableSession? @relation(fields: [tableSessionId], references: [id])
+  items       OrderItem[]
+  payments    Payment[]
+  kdsTickets  KdsTicket[]
+  refunds     Refund[]
+  discounts   OrderDiscount[]
+  taxes       OrderTax[]
+
+  @@unique([branchId, orderNumber])
+}
+
+model Customer {
+  id            String   @id @default(uuid())
+  tenantId      String
+  fullName      String
+  contactInfo   Json?
+  loyaltyPoints Int      @default(0)
+  createdAt     DateTime @default(now())
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  orders        Order[]
+  transactions  LoyaltyTransaction[]
+}
+
+model LoyaltyTransaction {
+  id         String   @id @default(uuid())
+  customerId String
+  points     Int
+  reason     String
+  createdAt  DateTime @default(now())
+  customer   Customer @relation(fields: [customerId], references: [id])
+}
+
+model RewardTier {
+  id           String   @id @default(uuid())
+  tenantId     String
+  name         String
+  minPoints    Int
+  rewardFactor Decimal  @default(1) @db.Decimal(6, 3)
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+}
+
+model Promotion {
+  id        String   @id @default(uuid())
+  tenantId  String
+  branchId  String
+  name      String
+  promoType String
+  scope     String
+  startDate DateTime
+  endDate   DateTime
+  status    String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  branch    Branch   @relation(fields: [branchId], references: [id])
+  rules     PromotionRule[]
+  audits    PromoAuditLog[]
+}
+
+model PromotionRule {
+  id          String   @id @default(uuid())
+  promotionId String
+  condition   Json
+  effect      Json
+  promotion   Promotion @relation(fields: [promotionId], references: [id])
+}
+
+model PromoAuditLog {
+  id          String   @id @default(uuid())
+  promotionId String?
+  orderId     String?
+  actorId     String?
+  action      String
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  promotion   Promotion? @relation(fields: [promotionId], references: [id])
+}
+
+model KitchenStation {
+  id        String   @id @default(uuid())
+  tenantId  String
+  branchId  String
+  name      String
+  printerId String?
+  branch    Branch   @relation(fields: [branchId], references: [id])
+  tickets   KdsTicket[]
+  printers  Printer[]
+}
+
+model KitchenRoutingRule {
+  id         String   @id @default(uuid())
+  branchId   String
+  menuItemId String?
+  categoryId String?
+  stationId  String
+  branch     Branch   @relation(fields: [branchId], references: [id])
+  menuItem   MenuItem? @relation(fields: [menuItemId], references: [id])
+  category   MenuCategory? @relation(fields: [categoryId], references: [id])
+}
+
+model KdsTicket {
+  id        String   @id @default(uuid())
+  orderId   String
+  stationId String
+  status    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  order     Order    @relation(fields: [orderId], references: [id])
+  station   KitchenStation @relation(fields: [stationId], references: [id])
+  events    KdsEvent[]
+  printJobs PrintJob[]
+}
+
+model KdsEvent {
+  id        String   @id @default(uuid())
+  ticketId  String
+  eventType String
+  payload   Json?
+  status    String
+  createdAt DateTime @default(now())
+  ticket    KdsTicket @relation(fields: [ticketId], references: [id])
+}
+
+model Printer {
+  id               String   @id @default(uuid())
+  branchId         String
+  stationId        String?
+  name             String
+  printerType      String
+  connectionParams Json?
+  branch           Branch   @relation(fields: [branchId], references: [id])
+  station          KitchenStation? @relation(fields: [stationId], references: [id])
+  printJobs        PrintJob[]
+}
+
+model PrintJob {
+  id        String   @id @default(uuid())
+  printerId String
+  ticketId  String
+  status    String
+  createdAt DateTime @default(now())
+  sentAt    DateTime?
+  printer   Printer  @relation(fields: [printerId], references: [id])
+  ticket    KdsTicket @relation(fields: [ticketId], references: [id])
+}
+
+model OrderItem {
+  id          String   @id @default(uuid())
+  tenantId    String
+  conceptId   String
+  branchId    String
+  orderId     String
+  menuItemId  String
+  variantId   String?
+  nameSnapshot String?
+  price       Decimal? @db.Decimal(12, 2)
+  qty         Decimal  @db.Decimal(12, 3)
+  notes       String?
+  status      String?
+  unitPrice   Decimal  @db.Decimal(12, 2)
+  lineTotal   Decimal  @db.Decimal(12, 2)
+  kitchenStatus String
+  createdAt   DateTime @default(now())
+  order       Order    @relation(fields: [orderId], references: [id])
+  menuItem    MenuItem @relation(fields: [menuItemId], references: [id])
+  modifiers   OrderItemModifier[]
+}
+
+model OrderItemModifier {
+  id               String   @id @default(uuid())
+  orderItemId      String
+  modifierOptionId String
+  nameSnapshot     String
+  price            Decimal  @db.Decimal(12, 2)
+  orderItem        OrderItem @relation(fields: [orderItemId], references: [id])
+}
+
+model OrderDiscount {
+  id       String   @id @default(uuid())
+  orderId  String
+  type     String
+  value    Decimal  @db.Decimal(12, 2)
+  reason   String?
+  order    Order    @relation(fields: [orderId], references: [id])
+}
+
+model OrderTax {
+  id        String   @id @default(uuid())
+  orderId   String
+  taxName   String
+  taxRate   Decimal  @db.Decimal(12, 4)
+  taxAmount Decimal  @db.Decimal(12, 2)
+  order     Order    @relation(fields: [orderId], references: [id])
+}
+
+model Payment {
+  id         String   @id @default(uuid())
+  tenantId   String
+  conceptId  String
+  branchId   String
+  orderId    String
+  paymentMethod String
+  amount     Decimal  @db.Decimal(12, 2)
+  status     String
+  paidAt     DateTime?
+  referenceId String?
+  deviceId   String?
+  idempotencyKey String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  order      Order    @relation(fields: [orderId], references: [id])
+  refunds    Refund[]
+
+  @@unique([tenantId, idempotencyKey])
+}
+
+model Refund {
+  id          String   @id @default(uuid())
+  tenantId    String
+  conceptId   String
+  branchId    String
+  orderId     String
+  paymentId   String
+  amount      Decimal  @db.Decimal(12, 2)
+  reason      String?
+  status      String
+  processedBy String?
+  processedAt DateTime?
+  createdAt   DateTime @default(now())
+  order       Order    @relation(fields: [orderId], references: [id])
+  payment     Payment  @relation(fields: [paymentId], references: [id])
+}
+
+model PaymentAuditLog {
+  id          String   @id @default(uuid())
+  tenantId    String
+  conceptId   String
+  branchId    String
+  orderId     String?
+  paymentId   String?
+  action      String
+  actorId     String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+}
+
+model Uom {
+  id               String   @id @default(uuid())
+  name             String
+  conversionFactor Decimal  @default(1) @db.Decimal(14, 6)
+  items            InventoryItem[]
+}
+
+model InventoryItem {
+  id               String   @id @default(uuid())
+  tenantId         String
+  conceptId        String
+  branchId         String?
+  name             String
+  sku              String
+  uomId            String?
+  stockLevel       Decimal  @default(0) @db.Decimal(14, 3)
+  reorderPoint     Decimal  @default(0) @db.Decimal(14, 3)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @default(now()) @updatedAt
+  uom              Uom?     @relation(fields: [uomId], references: [id])
+  branch           Branch?  @relation(fields: [branchId], references: [id])
+  recipeLines      RecipeLine[]
+  stockLedgers     StockLedger[]
+  stockCounts      StockCount[]
+  stockAdjustments StockAdjustment[]
+  poLines         PoLine[]
+  transferItems   StockTransfer[]
+  wastageEntries  WastageEntry[]
+  lots            LotTracking[]
+}
+
+model Supplier {
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String
+  contactInfo Json?
+  status      String
+  createdAt   DateTime @default(now())
+  purchaseOrders PurchaseOrder[]
+  vendor      Vendor?
+}
+
+model PurchaseOrder {
+  id         String   @id @default(uuid())
+  tenantId   String
+  branchId   String
+  supplierId String
+  poNumber   String
+  status     String
+  createdAt  DateTime @default(now())
+  receivedAt DateTime?
+  branch     Branch   @relation(fields: [branchId], references: [id])
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+  lines      PoLine[]
+
+  @@unique([tenantId, poNumber])
+}
+
+model PoLine {
+  id              String   @id @default(uuid())
+  purchaseOrderId String
+  inventoryItemId String
+  quantity        Decimal  @db.Decimal(14, 3)
+  unitPrice       Decimal  @db.Decimal(12, 2)
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id])
+}
+
+model StockTransfer {
+  id              String   @id @default(uuid())
+  fromBranchId    String
+  toBranchId      String
+  inventoryItemId String
+  quantity        Decimal  @db.Decimal(14, 3)
+  status          String
+  createdAt       DateTime @default(now())
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id])
+}
+
+model WastageEntry {
+  id              String   @id @default(uuid())
+  branchId        String
+  inventoryItemId String
+  quantity        Decimal  @db.Decimal(14, 3)
+  reason          String
+  createdBy       String
+  createdAt       DateTime @default(now())
+  branch          Branch   @relation(fields: [branchId], references: [id])
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id])
+}
+
+model LotTracking {
+  id              String   @id @default(uuid())
+  inventoryItemId String
+  lotNumber       String
+  expiryDate      DateTime
+  quantity        Decimal  @db.Decimal(14, 3)
+  branchId        String
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id])
+  branch          Branch   @relation(fields: [branchId], references: [id])
+
+  @@unique([inventoryItemId, lotNumber, branchId])
+}
+
+model Recipe {
+  id         String   @id @default(uuid())
+  menuItemId String
+  tenantId   String
+  conceptId  String
+  branchId   String?
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
+  lines      RecipeLine[]
+}
+
+model RecipeLine {
+  id              String   @id @default(uuid())
+  recipeId        String
+  inventoryItemId String
+  qtyPerItem      Decimal  @db.Decimal(14, 4)
+  recipe          Recipe   @relation(fields: [recipeId], references: [id])
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id])
+}
+
+model StockLedger {
+  id              String   @id @default(uuid())
+  inventoryItemId String
+  branchId        String
+  txnType         String
+  qty             Decimal  @db.Decimal(14, 3)
+  orderId         String?
+  reference       String?
+  createdAt       DateTime @default(now())
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id])
+}
+
+model StockCount {
+  id              String   @id @default(uuid())
+  inventoryItemId String
+  branchId        String
+  countedQty      Decimal  @db.Decimal(14, 3)
+  countedAt       DateTime @default(now())
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id])
+}
+
+model StockAdjustment {
+  id              String   @id @default(uuid())
+  inventoryItemId String
+  branchId        String
+  qty             Decimal  @db.Decimal(14, 3)
+  reason          String
+  adjustedBy      String
+  adjustedAt      DateTime @default(now())
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id])
+}
+
+model StaffProfile {
+  id         String   @id @default(uuid())
+  tenantId   String
+  branchId   String
+  name       String
+  role       String
+  status     String
+  createdAt  DateTime @default(now())
+  branch     Branch   @relation(fields: [branchId], references: [id])
+  attendance AttendanceLog[]
+  assignments ShiftAssignment[]
+}
+
+model AttendanceLog {
+  id        String   @id @default(uuid())
+  staffId   String?
+  employeeId String?
+  branchId  String
+  shiftId   String?
+  checkIn   DateTime
+  checkOut  DateTime?
+  status    String
+  createdAt DateTime @default(now())
+  staff     StaffProfile? @relation(fields: [staffId], references: [id])
+  employee  Employee? @relation(fields: [employeeId], references: [id])
+  branch    Branch   @relation(fields: [branchId], references: [id])
+  shift     Shift?   @relation(fields: [shiftId], references: [id])
+}
+
+model Shift {
+  id           String   @id @default(uuid())
+  tenantId     String
+  branchId     String
+  name         String
+  startTime    DateTime
+  endTime      DateTime?
+  status       String
+  branch       Branch   @relation(fields: [branchId], references: [id])
+  attendance   AttendanceLog[]
+  assignments  ShiftAssignment[]
+  employeeAssignments EmployeeShiftAssignment[]
+  cashDrawers  CashDrawer[]
+}
+
+model ShiftAssignment {
+  id       String   @id @default(uuid())
+  shiftId  String
+  staffId  String
+  shift    Shift    @relation(fields: [shiftId], references: [id])
+  staff    StaffProfile @relation(fields: [staffId], references: [id])
+}
+
+model CashDrawer {
+  id             String   @id @default(uuid())
+  branchId       String
+  shiftId        String
+  openedAt       DateTime
+  closedAt       DateTime?
+  openedBy       String
+  closedBy       String?
+  startingAmount Decimal  @db.Decimal(12, 2)
+  endingAmount   Decimal? @db.Decimal(12, 2)
+  branch         Branch   @relation(fields: [branchId], references: [id])
+  shift          Shift    @relation(fields: [shiftId], references: [id])
+  movements      CashMovement[]
+}
+
+model CashMovement {
+  id           String   @id @default(uuid())
+  cashDrawerId String
+  type         String
+  amount       Decimal  @db.Decimal(12, 2)
+  reason       String
+  createdBy    String
+  createdAt    DateTime @default(now())
+  cashDrawer   CashDrawer @relation(fields: [cashDrawerId], references: [id])
+}
+
+model DayClosure {
+  id           String   @id @default(uuid())
+  branchId     String
+  date         DateTime
+  totalSales   Decimal  @db.Decimal(12, 2)
+  cashVariance Decimal  @db.Decimal(12, 2)
+  closedBy     String
+  closedAt     DateTime @default(now())
+  branch       Branch   @relation(fields: [branchId], references: [id])
+}
+
+model JournalEntry {
+  id          String   @id @default(uuid())
+  tenantId    String
+  conceptId   String?
+  branchId    String?
+  date        DateTime @default(now())
+  description String?
+  totalDebit  Decimal  @default(0) @db.Decimal(12, 2)
+  totalCredit Decimal  @default(0) @db.Decimal(12, 2)
+  createdBy   String?
+  refType     String?
+  refId       String?
+  /** Null means draft/unposted. */
+  postedAt    DateTime?
+  createdAt   DateTime @default(now())
+  lines       JournalLine[]
+}
+
+model JournalLine {
+  id            String       @id @default(uuid())
+  tenantId      String
+  conceptId     String?
+  branchId      String?
+  entryId       String
+  accountId     String?
+  accountCode   String?
+  debit         Decimal      @db.Decimal(12, 2)
+  credit        Decimal      @db.Decimal(12, 2)
+  referenceType String?
+  referenceId   String?
+  createdAt     DateTime     @default(now())
+  entry         JournalEntry @relation(fields: [entryId], references: [id])
+  account       ChartOfAccount? @relation(fields: [accountId], references: [id])
+}
+
+model ChartOfAccount {
+  id          String   @id @default(uuid())
+  tenantId    String
+  branchId    String?
+  code        String
+  name        String
+  type        String
+  parentId    String?
+  createdAt   DateTime @default(now())
+  parent      ChartOfAccount? @relation("CoaHierarchy", fields: [parentId], references: [id])
+  children    ChartOfAccount[] @relation("CoaHierarchy")
+  journalLines JournalLine[]
+
+  @@unique([tenantId, code, branchId])
+}
+
+model ArInvoice {
+  id         String   @id @default(uuid())
+  tenantId   String
+  branchId   String
+  customerId String
+  invoiceNo  String
+  amount     Decimal  @db.Decimal(12, 2)
+  status     String
+  dueDate    DateTime
+  createdAt  DateTime @default(now())
+
+  @@unique([tenantId, invoiceNo])
+}
+
+model ApBill {
+  id        String   @id @default(uuid())
+  tenantId  String
+  branchId  String
+  vendorId  String
+  billNo    String
+  amount    Decimal  @db.Decimal(12, 2)
+  status    String
+  dueDate   DateTime
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, billNo])
+}
+
+model TaxLedger {
+  id        String   @id @default(uuid())
+  tenantId  String
+  branchId  String
+  taxCode   String
+  taxRate   Decimal  @db.Decimal(12, 4)
+  amount    Decimal  @db.Decimal(12, 2)
+  postedAt  DateTime @default(now())
+}
+
+model AccountingAuditLog {
+  id         String   @id @default(uuid())
+  tenantId   String
+  branchId   String?
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+}
+
+model SyncOutbox {
+  id             String   @id @default(uuid())
+  tenantId       String
+  conceptId      String
+  branchId       String
+  deviceId       String
+  entityType     String
+  operationType  String
+  payload        Json
+  idempotencyKey String   @unique
+  createdAt      DateTime @default(now())
+  processedAt    DateTime?
+}
+
+/// Idempotent results for POS device `POST /v1/sync/push` operations (per-tenant keys).
+model PosDeviceSyncLedger {
+  id             String   @id @default(uuid())
+  tenantId       String
+  branchId       String
+  deviceId       String?
+  idempotencyKey String
+  domain         String
+  opType         String
+  result         Json
+  createdAt      DateTime @default(now())
+
+  @@unique([tenantId, idempotencyKey])
+  @@map("pos_device_sync_ledger")
+}
+
+model ReportSales {
+  id         String   @id @default(uuid())
+  tenantId   String
+  conceptId  String
+  branchId   String
+  reportDate DateTime
+  grossSales Decimal  @db.Decimal(12, 2)
+  netSales   Decimal  @db.Decimal(12, 2)
+  ordersCount Int
+  createdAt  DateTime @default(now())
+}
+
+model ReportItems {
+  id          String   @id @default(uuid())
+  tenantId    String
+  conceptId   String
+  branchId    String
+  reportDate  DateTime
+  menuItemId  String?
+  itemName    String
+  qtySold     Decimal  @db.Decimal(12, 3)
+  revenue     Decimal  @db.Decimal(12, 2)
+  createdAt   DateTime @default(now())
+}
+
+model ReportCashier {
+  id          String   @id @default(uuid())
+  tenantId    String
+  conceptId   String
+  branchId    String
+  reportDate  DateTime
+  userId      String
+  ordersCount Int
+  salesTotal  Decimal  @db.Decimal(12, 2)
+  createdAt   DateTime @default(now())
+}
+
+model ReportShifts {
+  id          String   @id @default(uuid())
+  tenantId    String
+  branchId    String
+  reportDate  DateTime
+  shiftId     String
+  shiftName   String
+  status      String
+  openedAt    DateTime
+  closedAt    DateTime?
+  createdAt   DateTime @default(now())
+}
+
+model ReportDayClose {
+  id           String   @id @default(uuid())
+  branchId     String
+  reportDate   DateTime
+  totalSales   Decimal  @db.Decimal(12, 2)
+  cashVariance Decimal  @db.Decimal(12, 2)
+  closedBy     String
+  closedAt     DateTime
+  createdAt    DateTime @default(now())
+}
+
+model ReportInventory {
+  id           String   @id @default(uuid())
+  tenantId     String
+  conceptId    String
+  branchId     String
+  reportDate   DateTime
+  inventoryItemId String
+  stockLevel   Decimal  @db.Decimal(14, 3)
+  reorderPoint Decimal  @db.Decimal(14, 3)
+  isLowStock   Boolean
+  createdAt    DateTime @default(now())
+}
+
+model ReportDiscountsRefunds {
+  id             String   @id @default(uuid())
+  tenantId       String
+  conceptId      String
+  branchId       String
+  reportDate     DateTime
+  discountAmount Decimal  @db.Decimal(12, 2)
+  refundAmount   Decimal  @db.Decimal(12, 2)
+  createdAt      DateTime @default(now())
+}
+
+model ReportAuditLog {
+  id         String   @id @default(uuid())
+  tenantId   String
+  conceptId  String
+  branchId   String
+  actorId    String?
+  reportType String
+  filters    Json?
+  createdAt  DateTime @default(now())
+}
+
+model ForecastSales {
+  id             String   @id @default(uuid())
+  tenantId       String
+  conceptId      String
+  branchId       String
+  forecastDate   DateTime
+  horizon        String
+  predictedSales Decimal  @db.Decimal(12, 2)
+  confidence     Decimal  @db.Decimal(5, 4)
+  drivers        Json?
+  createdAt      DateTime @default(now())
+}
+
+model ForecastItems {
+  id             String   @id @default(uuid())
+  tenantId       String
+  conceptId      String
+  branchId       String
+  forecastDate   DateTime
+  menuItemId     String
+  predictedQty   Decimal  @db.Decimal(12, 3)
+  confidence     Decimal  @db.Decimal(5, 4)
+  drivers        Json?
+  createdAt      DateTime @default(now())
+}
+
+model ForecastReorder {
+  id                 String   @id @default(uuid())
+  tenantId           String
+  conceptId          String
+  branchId           String
+  forecastDate       DateTime
+  inventoryItemId    String
+  suggestedReorderQty Decimal @db.Decimal(14, 3)
+  predictedStockOutAt DateTime?
+  confidence         Decimal  @db.Decimal(5, 4)
+  drivers            Json?
+  createdAt          DateTime @default(now())
+}
+
+model ForecastSignals {
+  id          String   @id @default(uuid())
+  tenantId    String
+  conceptId   String
+  branchId    String
+  signalDate  DateTime
+  signalType  String
+  signalValue Decimal  @db.Decimal(14, 4)
+  metadata    Json?
+  createdAt   DateTime @default(now())
+}
+
+model AiForecastSales {
+  id             String   @id @default(uuid())
+  tenantId       String
+  conceptId      String
+  branchId       String
+  forecastDate   DateTime
+  horizon        String
+  predictedSales Decimal  @db.Decimal(12, 2)
+  confidence     Decimal  @db.Decimal(5, 4)
+  drivers        Json?
+  modelVersion   String?
+  createdAt      DateTime @default(now())
+}
+
+model AiForecastInventory {
+  id                  String   @id @default(uuid())
+  tenantId            String
+  conceptId           String
+  branchId            String
+  forecastDate        DateTime
+  inventoryItemId     String
+  predictedDemandQty  Decimal  @db.Decimal(14, 3)
+  predictedStockOutAt DateTime?
+  confidence          Decimal  @db.Decimal(5, 4)
+  drivers             Json?
+  createdAt           DateTime @default(now())
+}
+
+model AiReorderRecommendation {
+  id              String   @id @default(uuid())
+  tenantId        String
+  conceptId       String
+  branchId        String
+  inventoryItemId String
+  supplierId      String?
+  recommendedQty  Decimal  @db.Decimal(14, 3)
+  reason          String?
+  confidence      Decimal  @db.Decimal(5, 4)
+  status          String   @default("suggested")
+  generatedAt     DateTime @default(now())
+}
+
+model AiDynamicPricing {
+  id               String   @id @default(uuid())
+  tenantId         String
+  conceptId        String
+  branchId         String
+  menuItemId       String
+  currentPrice     Decimal  @db.Decimal(12, 2)
+  recommendedPrice Decimal  @db.Decimal(12, 2)
+  expectedLiftPct  Decimal  @db.Decimal(7, 4)
+  reason           String?
+  confidence       Decimal  @db.Decimal(5, 4)
+  generatedAt      DateTime @default(now())
+}
+
+model AiWastePrediction {
+  id                  String   @id @default(uuid())
+  tenantId            String
+  conceptId           String
+  branchId            String
+  inventoryItemId     String
+  predictedWasteQty   Decimal  @db.Decimal(14, 3)
+  estimatedWasteCost  Decimal  @db.Decimal(12, 2)
+  riskLevel           String
+  recommendation      String?
+  confidence          Decimal  @db.Decimal(5, 4)
+  generatedAt         DateTime @default(now())
+}
+
+model NotificationPreference {
+  id               String   @id @default(uuid())
+  tenantId         String
+  lowStockEnabled  Boolean  @default(true)
+  overdueInvoicesEnabled Boolean @default(true)
+  payrollExceptionsEnabled Boolean @default(true)
+  accountingVarianceEnabled Boolean @default(true)
+  channels         Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  tenant           Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId])
+}
+
+model Department {
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  employees   Employee[]
+}
+
+model Employee {
+  id             String   @id @default(uuid())
+  tenantId       String
+  conceptId      String?
+  branchId       String
+  fullName       String
+  roleId         String
+  departmentId   String
+  employmentType String
+  status         String
+  dateJoined     DateTime
+  dateLeft       DateTime?
+  createdAt      DateTime @default(now())
+  tenant         Tenant   @relation(fields: [tenantId], references: [id])
+  branch         Branch   @relation(fields: [branchId], references: [id])
+  role           Role     @relation(fields: [roleId], references: [id])
+  department     Department @relation(fields: [departmentId], references: [id])
+  attendanceLogs AttendanceLog[]
+  leaveRequests  LeaveRequest[]
+  payrollRecords PayrollRecord[]
+  shiftAssignments EmployeeShiftAssignment[]
+}
+
+model EmployeeShiftAssignment {
+  id           String   @id @default(uuid())
+  employeeId   String
+  shiftId      String
+  branchId     String
+  assignmentDate DateTime
+  createdAt    DateTime @default(now())
+  employee     Employee @relation(fields: [employeeId], references: [id])
+  shift        Shift    @relation(fields: [shiftId], references: [id])
+  branch       Branch   @relation(fields: [branchId], references: [id])
+}
+
+model LeaveRequest {
+  id         String   @id @default(uuid())
+  employeeId String
+  branchId   String
+  leaveType  String
+  startDate  DateTime
+  endDate    DateTime
+  status     String
+  createdAt  DateTime @default(now())
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  branch     Branch   @relation(fields: [branchId], references: [id])
+}
+
+model PayrollRecord {
+  id          String   @id @default(uuid())
+  employeeId  String
+  branchId    String
+  periodStart DateTime
+  periodEnd   DateTime
+  grossSalary Decimal  @db.Decimal(12, 2)
+  deductions  Decimal  @db.Decimal(12, 2)
+  netSalary   Decimal  @db.Decimal(12, 2)
+  status      String
+  createdAt   DateTime @default(now())
+  employee    Employee @relation(fields: [employeeId], references: [id])
+  branch      Branch   @relation(fields: [branchId], references: [id])
+}
+
+model HrAuditLog {
+  id         String   @id @default(uuid())
+  tenantId   String
+  branchId   String
+  employeeId String?
+  actorId    String?
+  action     String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+}
+
+model Vendor {
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String
+  contactInfo Json?
+  supplierId  String?  @unique
+  createdAt   DateTime @default(now())
+  supplier    Supplier? @relation(fields: [supplierId], references: [id])
+  statements  VendorStatement[]
+  branches    VendorBranch[]
+}
+
+model VendorStatement {
+  id          String   @id @default(uuid())
+  vendorId    String
+  tenantId    String
+  branchId    String
+  balance     Decimal  @default(0) @db.Decimal(12, 2)
+  lastUpdated DateTime @updatedAt
+  vendor      Vendor   @relation(fields: [vendorId], references: [id])
+  branch      Branch   @relation(fields: [branchId], references: [id])
+
+  @@unique([vendorId, branchId])
+}
+
+model VendorBranch {
+  id        String   @id @default(uuid())
+  vendorId  String
+  branchId  String
+  createdAt DateTime @default(now())
+  vendor    Vendor   @relation(fields: [vendorId], references: [id])
+  branch    Branch   @relation(fields: [branchId], references: [id])
+
+  @@unique([vendorId, branchId])
+}
+
+model AnalyticsSales {
+  id            String   @id @default(uuid())
+  tenantId      String
+  conceptId     String
+  branchId      String
+  metricDate    DateTime
+  grossSales    Decimal  @db.Decimal(12, 2)
+  netSales      Decimal  @db.Decimal(12, 2)
+  ordersCount   Int
+  realTimeStamp DateTime @default(now())
+}
+
+model AnalyticsItems {
+  id              String   @id @default(uuid())
+  tenantId        String
+  conceptId       String
+  branchId        String
+  metricDate      DateTime
+  menuItemId      String
+  qtySold         Decimal  @db.Decimal(12, 3)
+  revenue         Decimal  @db.Decimal(12, 2)
+  estimatedCogs   Decimal  @db.Decimal(12, 2)
+  profitability   Decimal  @db.Decimal(12, 2)
+  realTimeStamp   DateTime @default(now())
+}
+
+model AnalyticsCustomers {
+  id              String   @id @default(uuid())
+  tenantId        String
+  conceptId       String
+  branchId        String
+  metricDate      DateTime
+  customerId      String
+  ordersCount     Int
+  spendTotal      Decimal  @db.Decimal(12, 2)
+  averageBasket   Decimal  @db.Decimal(12, 2)
+  loyaltyPoints   Int
+  realTimeStamp   DateTime @default(now())
+}
+
+model AnalyticsInventory {
+  id              String   @id @default(uuid())
+  tenantId        String
+  conceptId       String
+  branchId        String
+  metricDate      DateTime
+  inventoryItemId String
+  stockLevel      Decimal  @db.Decimal(14, 3)
+  reorderPoint    Decimal  @db.Decimal(14, 3)
+  consumedQty     Decimal  @db.Decimal(14, 3)
+  wastedQty       Decimal  @db.Decimal(14, 3)
+  realTimeStamp   DateTime @default(now())
+}
+
+model AnalyticsPurchase {
+  id             String   @id @default(uuid())
+  tenantId       String
+  branchId       String
+  metricDate     DateTime
+  supplierId     String?
+  purchaseAmount Decimal  @db.Decimal(12, 2)
+  poCount        Int
+  billAmount     Decimal  @db.Decimal(12, 2)
+  realTimeStamp  DateTime @default(now())
+}
+
+model AnalyticsProfitability {
+  id                String   @id @default(uuid())
+  tenantId          String
+  conceptId         String
+  branchId          String
+  metricDate        DateTime
+  revenue           Decimal  @db.Decimal(12, 2)
+  cogs              Decimal  @db.Decimal(12, 2)
+  grossProfit       Decimal  @db.Decimal(12, 2)
+  grossMarginPct    Decimal  @db.Decimal(7, 4)
+  forecastVariance  Decimal  @db.Decimal(12, 2)
+  realTimeStamp     DateTime @default(now())
+}
+
+model BankAccount {
+  id            String   @id @default(uuid())
+  tenantId      String
+  branchId      String
+  accountName   String
+  accountNumber String
+  bankName      String
+  currency      String
+  createdAt     DateTime @default(now())
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  branch        Branch   @relation(fields: [branchId], references: [id])
+  transactions  BankTransaction[]
+}
+
+model BankTransaction {
+  id               String   @id @default(uuid())
+  bankAccountId    String
+  date             DateTime
+  description      String
+  amount           Decimal  @db.Decimal(12, 2)
+  type             String
+  reference        String?
+  status           String
+  matchedRefType   String?
+  matchedRefId     String?
+  createdAt        DateTime @default(now())
+  bankAccount      BankAccount @relation(fields: [bankAccountId], references: [id])
+}
+
+model AssetCategory {
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  assets      Asset[]
+}
+
+model Asset {
+  id                       String   @id @default(uuid())
+  tenantId                 String
+  branchId                 String
+  name                     String
+  categoryId               String
+  purchaseDate             DateTime
+  purchaseCost             Decimal  @db.Decimal(12, 2)
+  usefulLifeMonths         Int
+  depreciationMethod       String
+  accumulatedDepreciation  Decimal  @default(0) @db.Decimal(12, 2)
+  netBookValue             Decimal  @db.Decimal(12, 2)
+  status                   String
+  createdAt                DateTime @default(now())
+  tenant                   Tenant   @relation(fields: [tenantId], references: [id])
+  branch                   Branch   @relation(fields: [branchId], references: [id])
+  category                 AssetCategory @relation(fields: [categoryId], references: [id])
+  transactions             AssetTransaction[]
+}
+
+model AssetTransaction {
+  id              String   @id @default(uuid())
+  assetId         String
+  transactionType String
+  amount          Decimal  @db.Decimal(12, 2)
+  date            DateTime
+  createdAt       DateTime @default(now())
+  asset           Asset    @relation(fields: [assetId], references: [id])
+}
+
+model OcrUpload {
+  id           String   @id @default(uuid())
+  tenantId     String
+  branchId     String
+  uploadedBy   String
+  fileUrl      String
+  supplierName String?
+  documentDate DateTime?
+  totalAmount  Decimal? @db.Decimal(12, 2)
+  taxAmount    Decimal? @db.Decimal(12, 2)
+  status       String
+  createdAt    DateTime @default(now())
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  branch       Branch   @relation(fields: [branchId], references: [id])
+  lines        OcrLine[]
+}
+
+model OcrLine {
+  id              String   @id @default(uuid())
+  ocrUploadId     String
+  inventoryItemId String?
+  quantity        Decimal  @db.Decimal(14, 3)
+  unitPrice       Decimal  @db.Decimal(12, 2)
+  taxAmount       Decimal  @db.Decimal(12, 2)
+  total           Decimal  @db.Decimal(12, 2)
+  createdAt       DateTime @default(now())
+  upload          OcrUpload @relation(fields: [ocrUploadId], references: [id])
+}

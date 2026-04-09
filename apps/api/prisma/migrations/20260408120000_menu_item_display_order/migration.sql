@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "MenuItem" ADD COLUMN IF NOT EXISTS "displayOrder" INTEGER NOT NULL DEFAULT 0;

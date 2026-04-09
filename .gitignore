@@ -1,0 +1,22 @@
+node_modules/
+dist/
+.env
+.env.*
+coverage/
+.DS_Store
+*.log
+
+# Next.js build/cache artifacts
+.next/
+out/
+
+# Flutter/Dart generated
+**/.dart_tool/
+**/build/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.packages
+**/pubspec.lock
+
+# IDE caches
+**/.idea/
