@@ -5,12 +5,13 @@ import { PaymentsModule } from "../payments/payments.module";
 import { RealtimeModule } from "../realtime/realtime.module";
 import { ShiftModule } from "../shift/shift.module";
 import { PosSyncService } from "./pos-sync.service";
+import { SyncConflictService } from "./sync-conflict.service";
 import { SyncController } from "./sync.controller";
 
 @Module({
   imports: [DatabaseModule, OrdersModule, PaymentsModule, ShiftModule, RealtimeModule],
   controllers: [SyncController],
-  providers: [PosSyncService],
+  providers: [SyncConflictService, PosSyncService],
   exports: [PosSyncService]
 })
 export class SyncModule {}

@@ -126,7 +126,8 @@ export class PaymentsService {
       }
     }
 
-    this.realtimeGateway.emitPosOrderUpdate(order.branchId, order.id);
+    this.realtimeGateway.broadcastPaymentAdded(order.tenantId, order.branchId, order.id, payment.id);
+    this.realtimeGateway.broadcastOrderUpdated(order.tenantId, order.branchId, order.id);
 
     return {
       payment_id: payment.id,

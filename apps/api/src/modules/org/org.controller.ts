@@ -55,6 +55,11 @@ export class OrgController {
     return this.saasService.setDeviceStatus(ctx, id, "active");
   }
 
+  @Post("devices/:id/rotate-secret")
+  rotateDeviceSecret(@CurrentTenant() ctx: TenantContext, @Param("id") id: string) {
+    return this.saasService.rotateDeviceSecret(ctx, id);
+  }
+
   @Get("users")
   listUsers(@CurrentTenant() ctx: TenantContext) {
     return this.saasService.listUsers(ctx);

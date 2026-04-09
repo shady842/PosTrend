@@ -58,7 +58,8 @@ describe("PaymentsService", () => {
     } as any;
 
     const realtimeGateway = {
-      emitPosOrderUpdate: jest.fn()
+      broadcastPaymentAdded: jest.fn(),
+      broadcastOrderUpdated: jest.fn()
     } as any;
 
     const posting = {

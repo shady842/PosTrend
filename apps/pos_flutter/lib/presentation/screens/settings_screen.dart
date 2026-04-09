@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/storage/local_storage.dart';
+import '../../services/pos_realtime_sync.dart';
 import 'printing/printer_settings_screen.dart';
 import 'device_login_screen.dart';
 
@@ -31,6 +32,7 @@ class SettingsScreen extends StatelessWidget {
             const SizedBox(height: 10),
             ElevatedButton.icon(
               onPressed: () async {
+                await PosRealtimeSync.instance.stop();
                 await LocalStorage().clearSession();
                 if (!context.mounted) return;
                 Navigator.of(context).pushAndRemoveUntil(

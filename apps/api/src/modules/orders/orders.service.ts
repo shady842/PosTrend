@@ -204,7 +204,7 @@ export class OrdersService {
         break;
     }
 
-    this.realtimeGateway.emitPosOrderUpdate(order.branchId, order.id);
+    this.realtimeGateway.broadcastOrderUpdated(order.tenantId, order.branchId, order.id);
     return this.getForConceptOrder(dto.order_id, ctx);
   }
 
@@ -235,7 +235,7 @@ export class OrdersService {
       tableSessionId = session.id;
     }
 
-    return this.prisma.order.create({
+    const created = await this.prisma.order.create({
       data: {
         id: payload.client_order_id || undefined,
         tenantId: ctx.tenant_id,
@@ -257,6 +257,8 @@ export class OrdersService {
         total: 0
       }
     });
+    this.realtimeGateway.broadcastOrderCreated(ctx.tenant_id, created.branchId, created.id);
+    return created;
   }
 
   create(dto: CreateOrderDto) {
@@ -550,8 +552,6 @@ export class OrdersService {
       data: { status: "SENT_TO_KITCHEN", kitchenStatus: "SENT_TO_KITCHEN" }
     });
     await this.kdsService.createTicket(ctx, { order_id: order.id });
-    this.realtimeGateway.emitKdsUpdate(order.branchId, orderId, "SENT_TO_KITCHEN");
-    this.realtimeGateway.emitPosOrderUpdate(order.branchId, orderId);
     return this.get(orderId);
   }
 
@@ -601,6 +601,8 @@ export class OrdersService {
     });
     await this.recalculateTotals(source.id);
     await this.recalculateTotals(splitOrder.id);
+    this.realtimeGateway.broadcastOrderCreated(source.tenantId, splitOrder.branchId, splitOrder.id);
+    this.realtimeGateway.broadcastOrderUpdated(source.tenantId, source.branchId, source.id);
     return {
       source: await this.getForTenant(source.id, ctx),
       split: await this.getForTenant(splitOrder.id, ctx)
@@ -678,8 +680,8 @@ export class OrdersService {
         tx
       );
     });
-    this.realtimeGateway.emitSyncAvailable(order.branchId);
-    this.realtimeGateway.emitPosOrderUpdate(order.branchId, orderId);
+    this.realtimeGateway.broadcastSyncDeltaAvailable(order.tenantId, order.branchId);
+    this.realtimeGateway.broadcastOrderClosed(order.tenantId, order.branchId, orderId);
 
     return this.get(orderId);
   }

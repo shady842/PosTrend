@@ -14,6 +14,8 @@ type Device = { id: string; deviceName?: string; branchId: string; conceptId: st
 type Concept = { id: string; name: string };
 type Branch = { id: string; name: string };
 
+type PairingPayload = { device_code: string; device_secret: string };
+
 export default function DevicesPage() {
   const { notify } = useToast();
   const [rows, setRows] = useState<Device[]>([]);
@@ -23,6 +25,9 @@ export default function DevicesPage() {
   const [editing, setEditing] = useState<Device | null>(null);
   const [deleting, setDeleting] = useState<Device | null>(null);
   const [openDrawer, setOpenDrawer] = useState(false);
+  const [pairing, setPairing] = useState<PairingPayload | null>(null);
+  const [rotateTarget, setRotateTarget] = useState<Device | null>(null);
+  const [rotating, setRotating] = useState(false);
 
   const load = async () => {
     const [deviceRows, conceptRows, branchRows] = await Promise.all([
@@ -47,11 +52,44 @@ export default function DevicesPage() {
 
   const create = async (e: FormEvent) => {
     e.preventDefault();
-    await apiPost("/devices/register", form);
-    setForm((prev) => ({ ...prev, device_name: "" }));
-    await load();
-    notify("Device registered");
-    setOpenDrawer(false);
+    try {
+      const res = (await apiPost("/devices/register", form)) as PairingPayload;
+      setForm((prev) => ({ ...prev, device_name: "" }));
+      await load();
+      setOpenDrawer(false);
+      if (res?.device_code && res?.device_secret) {
+        setPairing({ device_code: res.device_code, device_secret: res.device_secret });
+      }
+      notify("Device registered — save the pairing secret below.");
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Registration failed");
+    }
+  };
+
+  const confirmRotateSecret = async () => {
+    if (!rotateTarget) return;
+    setRotating(true);
+    try {
+      const res = (await apiPost(`/devices/${rotateTarget.id}/rotate-secret`, {})) as PairingPayload;
+      setRotateTarget(null);
+      if (res?.device_code && res?.device_secret) {
+        setPairing({ device_code: res.device_code, device_secret: res.device_secret });
+      }
+      notify("New pairing secret issued. Update your POS app.");
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Could not rotate secret");
+    } finally {
+      setRotating(false);
+    }
+  };
+
+  const copyField = async (label: string, value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      notify(`${label} copied`);
+    } catch {
+      notify("Copy failed — select and copy manually");
+    }
   };
 
   const toggleStatus = async (row: Device) => {
@@ -85,7 +123,15 @@ export default function DevicesPage() {
               key: "actions",
               header: "Actions",
               render: (d) => (
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setRotateTarget(d)}
+                    className="bg-indigo-100 text-indigo-800 dark:bg-indigo-500/20"
+                    title="Get a new pairing secret (invalidates the previous one)"
+                  >
+                    Pairing secret
+                  </button>
                   <button onClick={() => setEditing(d)} className="bg-slate-100 dark:bg-slate-800">
                     Edit
                   </button>
@@ -136,6 +182,58 @@ export default function DevicesPage() {
           notify("Device removed");
         }}
       />
+      <FormModal open={!!pairing} title="POS pairing credentials" onClose={() => setPairing(null)}>
+        {pairing ? (
+          <div className="space-y-4 text-sm">
+            <p className="rounded-md bg-amber-50 p-3 text-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+              The pairing secret is shown only here. Store it safely. Anyone with it can sign in as this device.
+            </p>
+            <div>
+              <div className="mb-1 font-medium text-slate-700 dark:text-slate-200">Device code</div>
+              <div className="flex gap-2">
+                <code className="flex-1 rounded border border-slate-200 bg-slate-50 px-2 py-2 font-mono text-base dark:border-slate-600 dark:bg-slate-900">
+                  {pairing.device_code}
+                </code>
+                <button type="button" className="shrink-0 bg-slate-200 px-3 dark:bg-slate-700" onClick={() => void copyField("Device code", pairing.device_code)}>
+                  Copy
+                </button>
+              </div>
+            </div>
+            <div>
+              <div className="mb-1 font-medium text-slate-700 dark:text-slate-200">Pairing secret</div>
+              <div className="flex gap-2">
+                <code className="flex-1 break-all rounded border border-slate-200 bg-slate-50 px-2 py-2 font-mono text-sm dark:border-slate-600 dark:bg-slate-900">
+                  {pairing.device_secret}
+                </code>
+                <button type="button" className="shrink-0 bg-slate-200 px-3 dark:bg-slate-700" onClick={() => void copyField("Pairing secret", pairing.device_secret)}>
+                  Copy
+                </button>
+              </div>
+            </div>
+            <p className="text-slate-600 dark:text-slate-400">
+              In the POS app: enter <strong>Device code</strong> and <strong>Pairing secret</strong>. Device name is optional (friendly label).
+            </p>
+            <button type="button" className="w-full bg-indigo-600 text-white hover:bg-indigo-500" onClick={() => setPairing(null)}>
+              Done
+            </button>
+          </div>
+        ) : null}
+      </FormModal>
+
+      <ConfirmDialog
+        open={!!rotateTarget}
+        title="Regenerate pairing secret?"
+        description={
+          rotateTarget
+            ? `A new secret will be shown for ${rotateTarget.deviceCode}. The old secret will stop working immediately.`
+            : ""
+        }
+        onCancel={() => setRotateTarget(null)}
+        onConfirm={() => void confirmRotateSecret()}
+        confirmLabel={rotating ? "Working…" : "Regenerate"}
+        confirmDisabled={rotating}
+      />
+
       <DrawerPanel open={openDrawer} title="Register Device" onClose={() => setOpenDrawer(false)}>
         <form onSubmit={create} className="space-y-3">
           <select

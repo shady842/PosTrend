@@ -20,3 +20,6 @@ out/
 
 # IDE caches
 **/.idea/
+
+# TypeScript incremental build (local)
+**/tsconfig.tsbuildinfo

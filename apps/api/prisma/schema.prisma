@@ -1068,6 +1068,45 @@ model PosDeviceSyncLedger {
   @@map("pos_device_sync_ledger")
 }
 
+/// Optimistic concurrency + last-mutation time for POS sync (SYNC-5).
+model EntityVersion {
+  id             String   @id @default(uuid())
+  tenantId       String
+  branchId       String?
+  entityType     String
+  entityId       String
+  version        Int      @default(0)
+  lastMutationAt DateTime @default(now())
+
+  @@unique([tenantId, entityType, entityId])
+  @@index([tenantId, entityType])
+  @@map("entity_versions")
+}
+
+/// Audit trail for sync push / conflict resolution (SYNC-5).
+model SyncLog {
+  id              String   @id @default(uuid())
+  tenantId        String
+  branchId        String
+  deviceId        String?
+  opId            String?
+  idempotencyKey  String
+  domain          String
+  opType          String
+  status          String
+  clientTimestamp DateTime?
+  entityType      String?
+  entityId        String?
+  serverVersion   Int?
+  resolution      String?
+  detail          Json?
+  createdAt       DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, idempotencyKey])
+  @@map("sync_logs")
+}
+
 model ReportSales {
   id         String   @id @default(uuid())
   tenantId   String

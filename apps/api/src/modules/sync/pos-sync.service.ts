@@ -16,6 +16,7 @@ import { TransferTableDto } from "../orders/dto/pos-orders.dto";
 import { OpenShiftDto, CloseShiftDto, CashDrawerMoveDto } from "../shift/dto/shift.dto";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { SyncPushOpDto, SyncPushRequestDto } from "./dto/sync-push.dto";
+import { SyncConflictService } from "./sync-conflict.service";
 
 type LineIn = {
   menu_item_id: string;
@@ -32,7 +33,8 @@ export class PosSyncService {
     private readonly ordersService: OrdersService,
     private readonly paymentsService: PaymentsService,
     private readonly shiftService: ShiftService,
-    private readonly realtimeGateway: RealtimeGateway
+    private readonly realtimeGateway: RealtimeGateway,
+    private readonly syncConflict: SyncConflictService
   ) {}
 
   private parseDeviceId(sub: string): string | null {
@@ -90,7 +92,7 @@ export class PosSyncService {
     for (const op of dto.ops ?? []) {
       results.push(await this.applyOne(ctx, deviceId, op));
     }
-    this.realtimeGateway.emitSyncAvailable(ctx.branch_id);
+    this.realtimeGateway.broadcastSyncDeltaAvailable(ctx.tenant_id, ctx.branch_id);
     return {
       device_id: deviceId,
       results,
@@ -126,6 +128,13 @@ export class PosSyncService {
       }
     });
     if (prior) {
+      await this.syncConflict.appendLog({
+        ctx,
+        deviceId,
+        op,
+        status: "duplicate",
+        detail: null
+      });
       return {
         idempotency_key: op.idempotency_key,
         status: "duplicate",
@@ -134,10 +143,40 @@ export class PosSyncService {
         result: prior.result
       };
     }
+
+    const clientTs = op.client_timestamp ? new Date(op.client_timestamp) : null;
+    const existingOrderIds = await this.syncConflict.existingOrderIdsInScope(ctx, op);
+    for (const orderId of existingOrderIds) {
+      const expected = this.syncConflict.expectedVersionForCandidateOrder(op, orderId);
+      try {
+        const check = await this.syncConflict.checkOrderMutation(ctx, orderId, expected, clientTs);
+        if (!check.ok) {
+          return await this.finishConflictStale(ctx, deviceId, op, {
+            order_id: orderId,
+            current_version: check.current_version,
+            last_mutation_at: check.last_mutation_at
+          });
+        }
+      } catch (err: unknown) {
+        const ahead = this.parseExpectedVersionAhead(err);
+        if (ahead) {
+          return await this.finishConflictStale(ctx, deviceId, op, ahead);
+        }
+        throw err;
+      }
+    }
+
     let result: Record<string, unknown>;
     try {
       result = await this.dispatch(ctx, op);
     } catch (err: unknown) {
+      await this.syncConflict.appendLog({
+        ctx,
+        deviceId,
+        op,
+        status: "rejected",
+        detail: { error: this.errMessage(err) }
+      });
       return {
         idempotency_key: op.idempotency_key,
         status: "rejected",
@@ -146,6 +185,7 @@ export class PosSyncService {
         error: this.errMessage(err)
       };
     }
+
     try {
       await this.prisma.posDeviceSyncLedger.create({
         data: {
@@ -168,6 +208,13 @@ export class PosSyncService {
             }
           }
         });
+        await this.syncConflict.appendLog({
+          ctx,
+          deviceId,
+          op,
+          status: "duplicate",
+          detail: null
+        });
         return {
           idempotency_key: op.idempotency_key,
           status: "duplicate",
@@ -178,12 +225,113 @@ export class PosSyncService {
       }
       throw e;
     }
+
+    await this.syncConflict.bumpOrdersFromOp(ctx, op, result);
+
+    await this.syncConflict.appendLog({
+      ctx,
+      deviceId,
+      op,
+      status: "applied",
+      detail: null
+    });
+
     return {
       idempotency_key: op.idempotency_key,
       status: "applied",
       domain: op.domain,
       type: op.type,
       result
+    };
+  }
+
+  private parseExpectedVersionAhead(err: unknown): Record<string, unknown> | null {
+    if (!(err instanceof BadRequestException)) return null;
+    const msg = this.errMessage(err);
+    try {
+      const j = JSON.parse(msg) as Record<string, unknown>;
+      if (j && j["code"] === "expected_version_ahead") return j;
+    } catch {
+      /* not JSON */
+    }
+    return null;
+  }
+
+  private async finishConflictStale(
+    ctx: TenantContext,
+    deviceId: string | null,
+    op: SyncPushOpDto,
+    detail: Record<string, unknown>
+  ): Promise<Record<string, unknown>> {
+    const orderId = String(detail["order_id"] ?? "");
+    const serverVersion =
+      typeof detail["current_version"] === "number"
+        ? detail["current_version"]
+        : Number(detail["current_version"]);
+
+    const ledgerResult = {
+      kind: "conflict_stale",
+      ...detail
+    } as Record<string, unknown>;
+
+    try {
+      await this.prisma.posDeviceSyncLedger.create({
+        data: {
+          tenantId: ctx.tenant_id,
+          branchId: ctx.branch_id,
+          deviceId: deviceId ?? undefined,
+          idempotencyKey: op.idempotency_key,
+          domain: op.domain,
+          opType: op.type,
+          result: ledgerResult as object
+        }
+      });
+    } catch (e: unknown) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+        const dup = await this.prisma.posDeviceSyncLedger.findUnique({
+          where: {
+            tenantId_idempotencyKey: {
+              tenantId: ctx.tenant_id,
+              idempotencyKey: op.idempotency_key
+            }
+          }
+        });
+        await this.syncConflict.appendLog({
+          ctx,
+          deviceId,
+          op,
+          status: "duplicate",
+          detail: null
+        });
+        return {
+          idempotency_key: op.idempotency_key,
+          status: "duplicate",
+          domain: op.domain,
+          type: op.type,
+          result: dup?.result ?? {}
+        };
+      }
+      throw e;
+    }
+
+    await this.syncConflict.appendLog({
+      ctx,
+      deviceId,
+      op,
+      status: "conflict_stale",
+      entityType: "order",
+      entityId: orderId || null,
+      serverVersion: Number.isFinite(serverVersion) ? serverVersion : null,
+      resolution: "rejected_stale",
+      detail
+    });
+
+    return {
+      idempotency_key: op.idempotency_key,
+      status: "conflict_stale",
+      domain: op.domain,
+      type: op.type,
+      ...detail
     };
   }
 

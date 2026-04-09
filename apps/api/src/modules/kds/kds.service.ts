@@ -80,6 +80,16 @@ export class KdsService {
       });
     }
 
+    if (tickets.length > 0) {
+      this.realtimeGateway.broadcastOrderSent(
+        ctx.tenant_id,
+        order.branchId,
+        order.id,
+        tickets.map((x) => x.id)
+      );
+    }
+    this.realtimeGateway.broadcastOrderUpdated(ctx.tenant_id, order.branchId, order.id);
+
     return { order_id: order.id, tickets };
   }
 
@@ -132,8 +142,15 @@ export class KdsService {
       where: { orderId: ticket.orderId, status: { not: "VOIDED" } },
       data: { status: orderStatusMap[dto.status] || "SENT_TO_KITCHEN", kitchenStatus: orderStatusMap[dto.status] || "SENT_TO_KITCHEN" }
     });
-    this.realtimeGateway.emitKdsUpdate(ticket.station.branchId, ticket.id, dto.status);
-    this.realtimeGateway.emitPosOrderUpdate(ticket.station.branchId, ticket.orderId);
+    const branchId = ticket.station.branchId;
+    const tenantId = ticket.station.tenantId;
+    this.realtimeGateway.broadcastKdsUpdated(tenantId, branchId, ticket.id, ticket.orderId, dto.status);
+    this.realtimeGateway.broadcastOrderUpdated(tenantId, branchId, ticket.orderId);
+    if (dto.status === "preparing") {
+      this.realtimeGateway.broadcastItemPreparing(tenantId, branchId, ticket.orderId, ticket.id);
+    } else if (dto.status === "ready") {
+      this.realtimeGateway.broadcastItemReady(tenantId, branchId, ticket.orderId, ticket.id);
+    }
     return updated;
   }
 

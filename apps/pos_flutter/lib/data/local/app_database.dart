@@ -489,7 +489,7 @@ class AppDatabase {
         'id': 'mig_tbl_$rowId',
         'domain': 'table',
         'op_type': opType,
-        'idempotency_key': 'mig_table_${rowId}',
+        'idempotency_key': 'mig_table_$rowId',
         'payload': jsonEncode(payload),
         'created_at': createdAt,
         'attempt_count': 0,

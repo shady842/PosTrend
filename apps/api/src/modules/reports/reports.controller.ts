@@ -42,4 +42,10 @@ export class ReportsController {
   discountsRefunds(@CurrentTenant() ctx: TenantContext, @Query() query: ReportFilterDto) {
     return this.reportsService.discountsRefunds(ctx, query);
   }
+
+  /** Lightweight counts for admin dashboard live widgets (SYNC-4). */
+  @Get("live")
+  live(@CurrentTenant() ctx: TenantContext, @Query("branch_id") branchId?: string) {
+    return this.reportsService.liveOps(ctx, branchId);
+  }
 }

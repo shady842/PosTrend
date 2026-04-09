@@ -74,10 +74,14 @@ class OfflineSyncEngine {
       final payload =
           jsonDecode(r['payload'] as String) as Map<String, dynamic>;
       rowIds.add(id);
+      final createdAt = r['created_at'] as String?;
       ops.add({
         'domain': domain,
         'type': opType,
         'idempotency_key': idem,
+        'op_id': id,
+        if (createdAt != null && createdAt.isNotEmpty)
+          'client_timestamp': createdAt,
         'payload': payload,
       });
     }
@@ -167,7 +171,10 @@ class OfflineSyncEngine {
         continue;
       }
       final status = item['status'] as String? ?? '';
-      if (status == 'applied' || status == 'duplicate') {
+      // conflict_stale: server rejected optimistic version; drop from queue so we do not retry forever.
+      if (status == 'applied' ||
+          status == 'duplicate' ||
+          status == 'conflict_stale') {
         await _outbox.markSynced(id);
       } else {
         final err = item['error']?.toString() ?? 'rejected';

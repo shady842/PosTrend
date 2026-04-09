@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/network/connectivity_service.dart';
 import '../../core/storage/local_storage.dart';
 import '../../data/local/app_database.dart';
 import '../../services/payment_service.dart';
+import '../../services/pos_realtime_sync.dart';
 import '../../services/printing/printer_service.dart';
 import '../../widgets/money_keypad.dart';
 
@@ -48,15 +51,28 @@ class _PaymentScreenState extends State<PaymentScreen> {
   double? _lastTender;
   String? _lastPayLabel;
 
+  StreamSubscription<PosRealtimeEvent>? _realtimeSub;
+
   @override
   void initState() {
     super.initState();
+    _realtimeSub = PosRealtimeSync.instance.orderEvents.listen((e) {
+      if (!mounted) return;
+      if (e.orderId != widget.orderId) return;
+      _reload();
+    });
     _connectivity.watchOnline().listen((o) {
       if (!mounted) return;
       setState(() => _online = o);
       if (o) _reload();
     });
     _reload();
+  }
+
+  @override
+  void dispose() {
+    _realtimeSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _reload() async {

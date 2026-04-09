@@ -15,7 +15,9 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { io, type Socket } from "socket.io-client";
 import { Clock, Radio, RefreshCw } from "lucide-react";
+import { getAccessToken } from "@/lib/auth";
 import { apiGet, apiPost } from "@/lib/api";
+import { wsOrigin } from "@/lib/ws-origin";
 import { useToast } from "@/components/toast";
 import { cn } from "@/lib/utils";
 
@@ -82,15 +84,6 @@ const COLUMNS: {
     headerBg: "bg-zinc-500/15 border-zinc-500/30"
   }
 ];
-
-function wsOrigin(): string {
-  const api = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/v1";
-  try {
-    return new URL(api).origin;
-  } catch {
-    return "http://localhost:3000";
-  }
-}
 
 function formatDuration(totalSec: number) {
   const s = Math.max(0, totalSec);
@@ -353,29 +346,50 @@ export default function LivePosPage() {
 
   useEffect(() => {
     if (!branchId) return;
+    const token = getAccessToken();
+    if (!token) return;
     const url = wsOrigin();
+    const branchChannels = (b: string) => [
+      `orders.branch.${b}`,
+      `kds.branch.${b}`,
+      `pos.branch.${b}`
+    ];
     const socket: Socket = io(url, {
       transports: ["websocket", "polling"],
       reconnectionAttempts: 8,
-      reconnectionDelay: 1200
+      reconnectionDelay: 1200,
+      auth: { token }
     });
-    const join = () => socket.emit("join_branch", { branch_id: branchId });
+    const subscribe = () => {
+      socket.emit("realtime.subscribe", { channels: branchChannels(branchId) });
+    };
     const onConnect = () => {
       setWsConnected(true);
-      join();
+      subscribe();
     };
     const onRefresh = () => void loadOrders();
+    const realtimeEvents = [
+      "order.created",
+      "order.updated",
+      "order.closed",
+      "payment.added",
+      "kds.updated",
+      "order.sent",
+      "item.preparing",
+      "item.ready"
+    ] as const;
     socket.on("connect", onConnect);
-    socket.io.on("reconnect", join);
+    socket.io.on("reconnect", subscribe);
     socket.on("disconnect", () => setWsConnected(false));
-    socket.on("pos.order.updated", onRefresh);
-    socket.on("kds.ticket.updated", onRefresh);
+    for (const ev of realtimeEvents) {
+      socket.on(ev, onRefresh);
+    }
     return () => {
       socket.off("connect", onConnect);
-      socket.io.off("reconnect", join);
-      socket.off("disconnect");
-      socket.off("pos.order.updated", onRefresh);
-      socket.off("kds.ticket.updated", onRefresh);
+      socket.io.off("reconnect", subscribe);
+      for (const ev of realtimeEvents) {
+        socket.off(ev, onRefresh);
+      }
       socket.close();
     };
   }, [branchId, loadOrders]);

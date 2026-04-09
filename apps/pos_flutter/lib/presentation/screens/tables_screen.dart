@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/network/connectivity_service.dart';
 import '../../core/storage/local_storage.dart';
 import '../../data/local/app_database.dart';
 import '../../domain/entities/table_layout.dart';
+import '../../services/pos_realtime_sync.dart';
 import '../../services/tables_layout_service.dart';
 
 enum _ToolbarMode {
@@ -39,6 +42,7 @@ class _TablesScreenState extends State<TablesScreen> {
   @override
   void initState() {
     super.initState();
+    PosRealtimeSync.instance.addListener(_onRealtime);
     _connectivity.watchOnline().listen((o) {
       if (!mounted) return;
       setState(() => _online = o);
@@ -47,10 +51,26 @@ class _TablesScreenState extends State<TablesScreen> {
     _refresh();
   }
 
-  Future<void> _refresh({bool fromConnectivity = false}) async {
-    setState(() {
-      _loading = true;
-    });
+  @override
+  void dispose() {
+    PosRealtimeSync.instance.removeListener(_onRealtime);
+    super.dispose();
+  }
+
+  void _onRealtime() {
+    if (!mounted || !_online) return;
+    unawaited(_refresh(fromRealtime: true));
+  }
+
+  Future<void> _refresh({
+    bool fromConnectivity = false,
+    bool fromRealtime = false,
+  }) async {
+    if (!fromRealtime) {
+      setState(() {
+        _loading = true;
+      });
+    }
     final remote = await _tables.fetchLayoutRemote();
     var layout = remote;
     var cached = false;
@@ -73,7 +93,10 @@ class _TablesScreenState extends State<TablesScreen> {
         _floorId = layout.sections.isNotEmpty ? layout.sections.first.id : null;
       }
     });
-    if (fromConnectivity && mounted && remote != null) {
+    if (fromConnectivity &&
+        !fromRealtime &&
+        mounted &&
+        remote != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Tables layout updated')),
       );

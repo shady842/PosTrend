@@ -111,7 +111,7 @@ class SyncOutboxRepository {
   }
 
   static int _backoffSeconds(int attempt) {
-    final base = 5;
+    const base = 5;
     final exp = base * (1 << (attempt.clamp(0, 8)));
     return exp.clamp(5, 900);
   }

@@ -1,13 +1,16 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion, animate, useMotionValue, useTransform } from "framer-motion";
+import { Radio } from "lucide-react";
 import { apiGet } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { LoadingSkeleton } from "@/components/loading-skeleton";
 import { useToast } from "@/components/toast";
 import type { DashboardChartsProps } from "@/components/dashboard-charts";
+import { useAdminTenantRealtime } from "@/hooks/use-admin-tenant-realtime";
+import { cn } from "@/lib/utils";
 
 const DashboardCharts = dynamic(() => import("@/components/dashboard-charts"), {
   ssr: false,
@@ -36,15 +39,29 @@ export default function DashboardPage() {
   const [topItems, setTopItems] = useState<DashboardChartsProps["topItems"]>([]);
   const [timeline, setTimeline] = useState<DashboardChartsProps["timeline"]>([]);
   const [dataLoading, setDataLoading] = useState(true);
+  const [liveOps, setLiveOps] = useState({
+    active_orders: 0,
+    kds_tickets: 0,
+    occupied_tables: 0
+  });
 
-  const loadDashboard = async (branchId?: string) => {
-    setDataLoading(true);
-    try {
-      const [branchRows, salesResp, itemsResp] = await Promise.all([
-        apiGet("/branches"),
-        apiGet(`/reports/sales?page=1&page_size=300${branchId ? `&branch_id=${branchId}` : ""}`),
-        apiGet(`/reports/items?page=1&page_size=50${branchId ? `&branch_id=${branchId}` : ""}`)
-      ]);
+  const loadDashboard = useCallback(
+    async (branchId?: string, opts?: { quiet?: boolean }) => {
+      const quiet = opts?.quiet === true;
+      if (!quiet) {
+        setDataLoading(true);
+      }
+      try {
+        const liveQ =
+          branchId && branchId.length > 0
+            ? `?branch_id=${encodeURIComponent(branchId)}`
+            : "";
+        const [branchRows, salesResp, itemsResp, liveResp] = await Promise.all([
+          apiGet("/branches"),
+          apiGet(`/reports/sales?page=1&page_size=300${branchId ? `&branch_id=${branchId}` : ""}`),
+          apiGet(`/reports/items?page=1&page_size=50${branchId ? `&branch_id=${branchId}` : ""}`),
+          apiGet(`/reports/live${liveQ}`).catch(() => null)
+        ]);
       const branchData = Array.isArray(branchRows) ? branchRows : [];
       setBranches(branchData);
 
@@ -72,6 +89,14 @@ export default function DashboardPage() {
         topItemsCount: itemsRows.length
       });
 
+      if (liveResp && typeof liveResp === "object") {
+        setLiveOps({
+          active_orders: Number((liveResp as { active_orders?: number }).active_orders ?? 0),
+          kds_tickets: Number((liveResp as { kds_tickets?: number }).kds_tickets ?? 0),
+          occupied_tables: Number((liveResp as { occupied_tables?: number }).occupied_tables ?? 0)
+        });
+      }
+
       const groupedByDate = new Map<string, number>();
       for (const row of salesRows) {
         groupedByDate.set(row.date, (groupedByDate.get(row.date) || 0) + Number(row.net_sales || 0));
@@ -96,13 +121,15 @@ export default function DashboardPage() {
       setTimeline(timelineRows);
       setHourlySeries(timelineRows.map((r) => ({ hour: r.hour.slice(0, 2), orders: r.orders })));
     } catch (e) {
-      const msg =
-        e instanceof Error
-          ? e.name === "AbortError"
-            ? "Dashboard timed out — start the API on port 3000 or check NEXT_PUBLIC_API_URL."
-            : e.message || "Could not load dashboard."
-          : "Could not load dashboard.";
-      notify(msg);
+      if (!quiet) {
+        const msg =
+          e instanceof Error
+            ? e.name === "AbortError"
+              ? "Dashboard timed out — start the API on port 3000 or check NEXT_PUBLIC_API_URL."
+              : e.message || "Could not load dashboard."
+            : "Could not load dashboard.";
+        notify(msg);
+      }
       setSalesSeries([]);
       setCategorySeries([]);
       setHourlySeries([]);
@@ -117,11 +144,17 @@ export default function DashboardPage() {
     } finally {
       setDataLoading(false);
     }
-  };
+  },
+  [notify]
+  );
+
+  const { connected: tenantLiveConnected } = useAdminTenantRealtime(() => {
+    void loadDashboard(selectedBranch || undefined, { quiet: true });
+  });
 
   useEffect(() => {
     void loadDashboard(selectedBranch || undefined);
-  }, [selectedBranch]);
+  }, [selectedBranch, loadDashboard]);
 
   const chartProps = useMemo(
     () => ({
@@ -141,7 +174,22 @@ export default function DashboardPage() {
         title="Modern Analytics Dashboard"
         description="Real-time sales and operations intelligence"
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold",
+                tenantLiveConnected
+                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                  : "border-zinc-300 bg-zinc-100 text-zinc-600 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+              )}
+              title="Subscribed to admin.tenant — updates when orders, payments, tables, or KDS change"
+            >
+              <Radio
+                className={cn("h-3.5 w-3.5", tenantLiveConnected && "fill-emerald-500 text-emerald-500")}
+                strokeWidth={2.5}
+              />
+              {tenantLiveConnected ? "Tenant live" : "Realtime off"}
+            </span>
             <select value={selectedBranch} onChange={(e) => setSelectedBranch(e.target.value)} className="min-w-40">
               <option value="">All branches</option>
               {branches.map((b) => (
@@ -163,6 +211,26 @@ export default function DashboardPage() {
         }
       />
 
+      {!dataLoading && (
+        <div className="grid gap-3 sm:grid-cols-3">
+          <LiveOpsPill
+            label="Active orders"
+            value={liveOps.active_orders}
+            hint="Open / in-progress checks (scoped branch)"
+          />
+          <LiveOpsPill
+            label="KDS tickets"
+            value={liveOps.kds_tickets}
+            hint="Kitchen queue: new, preparing, ready"
+          />
+          <LiveOpsPill
+            label="Occupied tables"
+            value={liveOps.occupied_tables}
+            hint="Open table sessions"
+          />
+        </div>
+      )}
+
       {dataLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <LoadingSkeleton />
@@ -180,6 +248,18 @@ export default function DashboardPage() {
       )}
 
       {!dataLoading && <DashboardCharts {...chartProps} />}
+    </div>
+  );
+}
+
+function LiveOpsPill({ label, value, hint }: { label: string; value: number; hint: string }) {
+  return (
+    <div className="card flex items-center justify-between gap-3 p-4" title={hint}>
+      <div>
+        <p className="muted text-xs font-medium uppercase tracking-wide">{label}</p>
+        <p className="mt-1 text-2xl font-bold tabular-nums">{value}</p>
+      </div>
+      <div className="h-10 w-1 rounded-full bg-indigo-500/30" aria-hidden />
     </div>
   );
 }

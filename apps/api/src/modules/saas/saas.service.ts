@@ -580,6 +580,25 @@ export class SaasService {
     return { id: deviceId, status };
   }
 
+  /** Issues a new plaintext secret (invalidates the previous one). Use when the original was lost. */
+  async rotateDeviceSecret(ctx: TenantContext, deviceId: string) {
+    const device = await this.prisma.device.findFirst({
+      where: { id: deviceId, tenantId: ctx.tenant_id }
+    });
+    if (!device) {
+      throw new ForbiddenException("Device not found");
+    }
+    const secret = randomBytes(16).toString("hex");
+    await this.prisma.device.update({
+      where: { id: deviceId },
+      data: { deviceSecretHash: this.hashSecret(secret) }
+    });
+    return {
+      device_code: device.deviceCode,
+      device_secret: secret
+    };
+  }
+
   async listRolePermissions(ctx: TenantContext) {
     const roles = await this.prisma.role.findMany({
       where: { tenantId: ctx.tenant_id },

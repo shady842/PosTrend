@@ -33,6 +33,7 @@ class _KdsScreenState extends State<KdsScreen> {
   _KdsTab _tab = _KdsTab.newTab;
   io.Socket? _socket;
   Timer? _pollTimer;
+  Timer? _rtDebounce;
   bool _busyAction = false;
 
   @override
@@ -42,8 +43,8 @@ class _KdsScreenState extends State<KdsScreen> {
       if (!mounted) return;
       setState(() => _online = o);
       if (o) {
-        _connectWs();
-        _refresh();
+        unawaited(_connectWs());
+        unawaited(_refresh());
       }
     });
     _bootstrap();
@@ -53,42 +54,69 @@ class _KdsScreenState extends State<KdsScreen> {
     final b = await _storage.getBranchScope();
     if (!mounted) return;
     setState(() => _branchId = (b ?? '').trim());
-    _connectWs();
+    await _connectWs();
     await _refresh();
     _startPollingFallback();
   }
 
-  void _connectWs() {
+  Future<void> _connectWs() async {
     final branchId = _branchId;
     if (branchId == null || branchId.isEmpty) return;
     if (!_online) return;
 
     _socket?.dispose();
-    final s = io.io(
-      ApiConfig.baseUrl,
-      <String, dynamic>{
-        'transports': ['websocket'],
-        'autoConnect': false,
-      },
-    );
+    final token = await _storage.getJwt();
+    final opts = <String, dynamic>{
+      'transports': ['websocket', 'polling'],
+      'autoConnect': false,
+      'reconnection': true,
+      'reconnectionAttempts': 1000,
+      'reconnectionDelay': 1000,
+      'reconnectionDelayMax': 30000,
+    };
+    if (token != null && token.isNotEmpty) {
+      opts['auth'] = {'token': token};
+    }
+    final s = io.io(ApiConfig.baseUrl, opts);
     _socket = s;
+
+    /// SYNC-3: kitchen display only listens on the KDS channel.
+    final channels = ['kds.branch.$branchId'];
+
+    void subscribe() {
+      s.emit('realtime.subscribe', {'channels': channels});
+    }
 
     s.onConnect((_) {
       if (!mounted) return;
       setState(() => _wsConnected = true);
-      s.emit('join_branch', {'branch_id': branchId});
+      subscribe();
     });
     s.onDisconnect((_) {
       if (!mounted) return;
       setState(() => _wsConnected = false);
     });
-    s.on('kds.ticket.updated', (_) {
-      _refresh();
+    s.io.on('reconnect', (_) {
+      subscribe();
+      _scheduleRtRefresh();
     });
-    s.on('pos.order.updated', (_) {
-      _refresh();
-    });
+    for (final ev in [
+      'order.sent',
+      'item.preparing',
+      'item.ready',
+      'kds.updated',
+    ]) {
+      s.on(ev, (_) => _scheduleRtRefresh());
+    }
     s.connect();
+  }
+
+  void _scheduleRtRefresh() {
+    _rtDebounce?.cancel();
+    _rtDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) return;
+      unawaited(_refresh(silent: _tickets.isNotEmpty));
+    });
   }
 
   void _startPollingFallback() {
@@ -101,8 +129,10 @@ class _KdsScreenState extends State<KdsScreen> {
     });
   }
 
-  Future<void> _refresh() async {
-    setState(() => _loading = true);
+  Future<void> _refresh({bool silent = false}) async {
+    if (!silent) {
+      setState(() => _loading = true);
+    }
     final t = await _kds.fetchActiveTickets();
     if (!mounted) return;
     setState(() {
@@ -195,6 +225,7 @@ class _KdsScreenState extends State<KdsScreen> {
 
   @override
   void dispose() {
+    _rtDebounce?.cancel();
     _pollTimer?.cancel();
     _socket?.dispose();
     super.dispose();

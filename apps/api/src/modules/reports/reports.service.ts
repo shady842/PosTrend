@@ -113,6 +113,55 @@ export class ReportsService {
     return this.paginatedOrExport(mapped, q, "reports_inventory");
   }
 
+  /** Live operational snapshot for tenant dashboard (no audit — polled frequently). */
+  async liveOps(ctx: TenantContext, branchIdParam?: string) {
+    const branchId = branchIdParam
+      ? this.enforceScope(branchIdParam, ctx.branch_id, "branch_id")
+      : ctx.branch_id;
+
+    const activeStatuses = [
+      "OPEN",
+      "draft",
+      "SENT_TO_KITCHEN",
+      "PREPARING",
+      "READY",
+      "SERVED",
+      "BILLED"
+    ];
+
+    const [active_orders, kds_tickets, occupied_tables] = await Promise.all([
+      this.prisma.order.count({
+        where: {
+          tenantId: ctx.tenant_id,
+          branchId,
+          status: { in: activeStatuses }
+        }
+      }),
+      this.prisma.kdsTicket.count({
+        where: {
+          status: { in: ["pending", "preparing", "ready"] },
+          station: { tenantId: ctx.tenant_id, branchId }
+        }
+      }),
+      this.prisma.tableSession.count({
+        where: {
+          tenantId: ctx.tenant_id,
+          branchId,
+          status: "OPEN",
+          closedAt: null
+        }
+      })
+    ]);
+
+    return {
+      branch_id: branchId,
+      active_orders,
+      kds_tickets,
+      occupied_tables,
+      server_time: new Date().toISOString()
+    };
+  }
+
   async discountsRefunds(ctx: TenantContext, q: ReportFilterDto) {
     await this.audit(ctx, "discounts_refunds", q);
     const where = this.orderWhere(ctx, q);

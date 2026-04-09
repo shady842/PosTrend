@@ -43,9 +43,8 @@ describe("OrdersService", () => {
     } as any;
 
     const realtimeGateway = {
-      emitSyncAvailable: jest.fn(),
-      emitKdsUpdate: jest.fn(),
-      emitPosOrderUpdate: jest.fn()
+      broadcastSyncDeltaAvailable: jest.fn(),
+      broadcastOrderClosed: jest.fn()
     } as any;
 
     const kdsService = {
@@ -72,6 +71,7 @@ describe("OrdersService", () => {
       }),
       tx
     );
-    expect(realtimeGateway.emitSyncAvailable).toHaveBeenCalledWith("b1");
+    expect(realtimeGateway.broadcastSyncDeltaAvailable).toHaveBeenCalledWith("t1", "b1");
+    expect(realtimeGateway.broadcastOrderClosed).toHaveBeenCalledWith("t1", "b1", "o1");
   });
 });

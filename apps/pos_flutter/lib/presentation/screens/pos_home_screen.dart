@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../core/network/connectivity_service.dart';
+import '../../services/pos_realtime_sync.dart';
 import '../../widgets/large_touch_button.dart';
 import 'kds_screen.dart';
 import 'orders_screen.dart';
@@ -64,6 +67,9 @@ class _PosHomeScreenState extends State<PosHomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(PosRealtimeSync.instance.start());
+    });
     ConnectivityService().watchOnline().listen((online) {
       if (mounted) setState(() => _online = online);
     });
@@ -76,6 +82,27 @@ class _PosHomeScreenState extends State<PosHomeScreen> {
       appBar: AppBar(
         title: const Text('POS Home'),
         actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Center(
+              child: ListenableBuilder(
+                listenable: PosRealtimeSync.instance,
+                builder: (context, _) {
+                  final live = PosRealtimeSync.instance.connected;
+                  return Tooltip(
+                    message: live
+                        ? 'Realtime: connected (orders branch)'
+                        : 'Realtime: disconnected',
+                    child: Icon(
+                      Icons.podcasts,
+                      color: live ? Colors.lightGreenAccent : Colors.white54,
+                      size: 22,
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: Center(
