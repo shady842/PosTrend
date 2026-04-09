@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/config/api_config.dart';
 import '../../core/storage/local_storage.dart';
 import '../../data/repositories/auth_repository_impl.dart';
 import '../../widgets/large_touch_button.dart';
@@ -120,7 +121,10 @@ class _DeviceLoginScreenState extends State<DeviceLoginScreen> {
       debugPrint('$e\n$st');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString())),
+          SnackBar(
+            content: Text(e.toString()),
+            duration: const Duration(seconds: 10),
+          ),
         );
       }
     } finally {
@@ -209,6 +213,16 @@ class _DeviceLoginScreenState extends State<DeviceLoginScreen> {
           label: _loading ? 'Signing in...' : 'Connect device',
           icon: Icons.login,
           onPressed: _loading ? () {} : _submit,
+        ),
+        Padding(
+          padding: const EdgeInsets.only(top: 14),
+          child: Text(
+            'API: ${ApiConfig.baseUrl}',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.outline,
+                ),
+          ),
         ),
       ],
     );

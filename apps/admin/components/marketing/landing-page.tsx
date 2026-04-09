@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { motion } from "framer-motion";
 import { ConversionOptimizer } from "@/components/marketing/conversion-optimizer";
+import { PortalLinks } from "@/components/portal-links";
 import { trackEvent } from "@/lib/analytics";
 
 const features = [
@@ -48,18 +49,37 @@ export function LandingPage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-white via-indigo-50/30 to-white text-slate-900">
       <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/85 backdrop-blur">
-        <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-4 md:px-6">
-          <Link href="/" className="flex items-center gap-2 text-lg font-bold">
-            <Image src="/brand/postrend-logo.svg" alt="PosTrend logo" width={28} height={28} />
-            <span>PosTrend</span>
-          </Link>
-          <nav className="hidden items-center gap-6 text-sm md:flex">
-            <a href="#features" className="hover:text-indigo-600">Features</a>
-            <Link href="/pricing" className="hover:text-indigo-600">Pricing</Link>
-            <Link href="/demo" className="hover:text-indigo-600">Demo</Link>
-            <Link href="/login" className="hover:text-indigo-600">Login</Link>
-            <Link href="/signup" className="rounded-lg bg-indigo-600 px-4 py-2 font-medium text-white hover:bg-indigo-500">Start trial</Link>
-          </nav>
+        <div className="mx-auto w-full max-w-7xl px-4 md:px-6">
+          <div className="flex h-14 items-center justify-between md:h-16">
+            <Link href="/" className="flex items-center gap-2 text-lg font-bold">
+              <Image src="/brand/postrend-logo.svg" alt="PosTrend logo" width={28} height={28} />
+              <span>PosTrend</span>
+            </Link>
+            <nav className="hidden flex-wrap items-center justify-end gap-x-5 gap-y-2 text-sm md:flex">
+              <a href="#features" className="hover:text-indigo-600">
+                Features
+              </a>
+              <Link href="/pricing" className="hover:text-indigo-600">
+                Pricing
+              </Link>
+              <Link href="/demo" className="hover:text-indigo-600">
+                Demo
+              </Link>
+              <PortalLinks tone="marketing" className="border-l border-slate-200 pl-5 dark:border-slate-700" />
+              <Link href="/signup" className="rounded-lg bg-indigo-600 px-4 py-2 font-medium text-white hover:bg-indigo-500">
+                Start trial
+              </Link>
+            </nav>
+            <Link
+              href="/signup"
+              className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-500 md:hidden"
+            >
+              Trial
+            </Link>
+          </div>
+          <div className="flex justify-center border-t border-slate-100 py-2 md:hidden dark:border-slate-800">
+            <PortalLinks tone="marketing" />
+          </div>
         </div>
       </header>
 

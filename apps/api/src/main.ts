@@ -4,8 +4,15 @@ import { AppModule } from "./modules/app.module";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const isProd = process.env.NODE_ENV === "production";
+  const corsOrigins = (process.env.CORS_ORIGINS || "http://localhost:3001")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
   app.enableCors({
-    origin: ["http://localhost:3001"],
+    // Dev: allow admin from any host (LAN IP + localhost) so phones and tablets can reach the API.
+    // Prod: set NODE_ENV=production and CORS_ORIGINS to your real admin URL(s).
+    origin: isProd ? corsOrigins : true,
     credentials: true
   });
   app.setGlobalPrefix("v1");
@@ -16,7 +23,9 @@ async function bootstrap() {
       transform: true
     })
   );
-  await app.listen(3000);
+  const port = Number(process.env.PORT || 3000);
+  const host = process.env.HOST || "0.0.0.0";
+  await app.listen(port, host);
 }
 
 bootstrap();

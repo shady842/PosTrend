@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment } from "react";
+import Link from "next/link";
 import { Bell, ChevronDown, Moon, Search, Sun } from "lucide-react";
 import { Menu, Transition } from "@headlessui/react";
 import { cn } from "@/lib/utils";
@@ -79,17 +80,39 @@ export function TopNavbar({
           leaveFrom="opacity-100"
           leaveTo="opacity-0"
         >
-          <Menu.Items className="card absolute right-0 mt-2 w-44 p-1">
+          <Menu.Items className="card absolute right-0 mt-2 w-52 p-1">
             <Menu.Item>
               {({ active }) => (
-                <button className={cn("w-full text-left", active && "bg-slate-100 dark:bg-slate-800")}>Profile</button>
+                <Link
+                  href="/"
+                  className={cn("block px-2 py-1.5 text-sm", active && "bg-slate-100 dark:bg-slate-800")}
+                >
+                  Marketing site
+                </Link>
+              )}
+            </Menu.Item>
+            <Menu.Item>
+              {({ active }) => (
+                <Link
+                  href="/super-admin/login"
+                  className={cn("block px-2 py-1.5 text-sm", active && "bg-slate-100 dark:bg-slate-800")}
+                >
+                  Super admin login
+                </Link>
+              )}
+            </Menu.Item>
+            <Menu.Item>
+              {({ active }) => (
+                <button className={cn("w-full px-2 py-1.5 text-left text-sm", active && "bg-slate-100 dark:bg-slate-800")}>
+                  Profile
+                </button>
               )}
             </Menu.Item>
             <Menu.Item>
               {({ active }) => (
                 <button
                   onClick={onLogout}
-                  className={cn("w-full text-left text-rose-600", active && "bg-slate-100 dark:bg-slate-800")}
+                  className={cn("w-full px-2 py-1.5 text-left text-sm text-rose-600", active && "bg-slate-100 dark:bg-slate-800")}
                 >
                   Logout
                 </button>

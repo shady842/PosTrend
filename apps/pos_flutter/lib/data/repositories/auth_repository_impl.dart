@@ -1,10 +1,14 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
 import '../../core/config/api_config.dart';
 import '../../core/storage/local_storage.dart';
 import '../../domain/repositories/auth_repository.dart';
+
+const Duration _kAuthHttpTimeout = Duration(seconds: 30);
 
 class AuthRepositoryImpl implements AuthRepository {
   AuthRepositoryImpl(this._storage);
@@ -15,6 +19,30 @@ class AuthRepositoryImpl implements AuthRepository {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       };
+
+  Future<http.Response> _postJson(Uri uri, Object body) async {
+    try {
+      return await http
+          .post(uri, headers: _jsonHeaders, body: jsonEncode(body))
+          .timeout(
+            _kAuthHttpTimeout,
+            onTimeout: () {
+              throw TimeoutException(
+                'No response from server within ${_kAuthHttpTimeout.inSeconds}s.\n'
+                'API: ${ApiConfig.baseUrl}\n'
+                'On a real phone, use your PC\'s LAN IP (e.g. http://192.168.1.10:3000), '
+                'not 10.0.2.2 — rebuild the app with --dart-define=API_BASE_URL=...',
+              );
+            },
+          );
+    } on SocketException catch (e) {
+      throw Exception(
+        'Cannot reach API at ${ApiConfig.baseUrl}\n'
+        '${e.message ?? e.osError?.message ?? "network error"}\n'
+        'Same Wi‑Fi as your server? Firewall allows port 3000?',
+      );
+    }
+  }
 
   String _readError(http.Response res) {
     try {
@@ -46,11 +74,7 @@ class AuthRepositoryImpl implements AuthRepository {
       if (deviceName.trim().isNotEmpty) 'device_name': deviceName.trim(),
     };
 
-    final res = await http.post(
-      Uri.parse(ApiConfig.deviceLoginUrl),
-      headers: _jsonHeaders,
-      body: jsonEncode(body),
-    );
+    final res = await _postJson(Uri.parse(ApiConfig.deviceLoginUrl), body);
 
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw Exception(_readError(res));
@@ -106,10 +130,9 @@ class AuthRepositoryImpl implements AuthRepository {
       throw StateError('No refresh token stored.');
     }
 
-    final res = await http.post(
+    final res = await _postJson(
       Uri.parse(ApiConfig.deviceRefreshUrl),
-      headers: _jsonHeaders,
-      body: jsonEncode({'refresh_token': refresh}),
+      {'refresh_token': refresh},
     );
 
     if (res.statusCode < 200 || res.statusCode >= 300) {

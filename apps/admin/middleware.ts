@@ -29,12 +29,17 @@ export function middleware(req: NextRequest) {
   }
   // Keep super-admin login reachable even when an admin session exists.
   if (token && isAuthPage && !isSuperLogin) {
-    return NextResponse.redirect(new URL(role === "super_admin" ? "/super-admin/dashboard" : "/dashboard", req.url));
+    const superOwnerBrowsingTenantAuth =
+      role === "super_admin" && (pathname.startsWith("/login") || pathname.startsWith("/signup"));
+    if (!superOwnerBrowsingTenantAuth) {
+      return NextResponse.redirect(new URL(role === "super_admin" ? "/super-admin/dashboard" : "/dashboard", req.url));
+    }
   }
   if (token && isSuperPath && !isSuperLogin && role !== "super_admin") {
     return NextResponse.redirect(new URL("/dashboard", req.url));
   }
-  if (token && !isSuperPath && role === "super_admin") {
+  // Let platform owners use the marketing site and tenant login; only guard real app routes.
+  if (token && !isSuperPath && !isPublic && role === "super_admin") {
     return NextResponse.redirect(new URL("/super-admin/dashboard", req.url));
   }
   return NextResponse.next();

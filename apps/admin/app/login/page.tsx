@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
+import { PortalLinks } from "@/components/portal-links";
 import { apiPost } from "@/lib/api";
 import { setSessionTokens } from "@/lib/auth";
 import { motion } from "framer-motion";
@@ -86,6 +87,10 @@ export default function LoginPage() {
             Sign up
           </Link>
         </p>
+        <div className="mt-6 border-t border-slate-200/80 pt-4 dark:border-slate-700">
+          <p className="muted mb-2 text-center text-xs">Other entry points</p>
+          <PortalLinks />
+        </div>
       </motion.form>
     </div>
   );

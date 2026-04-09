@@ -19,6 +19,7 @@ import {
   Users,
   Wallet
 } from "lucide-react";
+import { PortalLinks } from "@/components/portal-links";
 import { apiGet } from "@/lib/api";
 import { clearAccessToken } from "@/lib/auth";
 import { cn } from "@/lib/utils";
@@ -113,6 +114,9 @@ export function SuperAdminLayout({ children }: { children: ReactNode }) {
           <div className="relative max-w-md flex-1">
             <Search className="absolute left-2 top-2.5 h-4 w-4 text-slate-400" />
             <input className="w-full pl-8" placeholder="Global search..." />
+          </div>
+          <div className="hidden shrink-0 items-center border-l border-slate-200 pl-3 dark:border-slate-700 lg:flex">
+            <PortalLinks tone="marketing" />
           </div>
           <span className={cn("rounded-full px-2 py-1 text-xs", status === "ok" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700")}>
             System {status}

@@ -10,19 +10,34 @@ async function main() {
     return `${salt}:${hash}`;
   };
 
-  await prisma.superAdminUser.upsert({
-    where: { email: process.env.SUPER_ADMIN_EMAIL || "owner@postrend.local" },
-    create: {
-      email: process.env.SUPER_ADMIN_EMAIL || "owner@postrend.local",
-      fullName: "Platform Owner",
-      passwordHash: hashSecret(process.env.SUPER_ADMIN_PASSWORD || "Owner123!"),
-      status: "active"
-    },
-    update: {}
-  });
+  const superEmail = (process.env.SUPER_ADMIN_EMAIL || "owner@postrend.local").trim().toLowerCase();
+  const superPassword = process.env.SUPER_ADMIN_PASSWORD || "Owner123!";
+  const superAdmins = await prisma.superAdminUser.findMany();
+  const existingSa = superAdmins.find((u) => u.email.toLowerCase() === superEmail);
+  if (existingSa) {
+    await prisma.superAdminUser.update({
+      where: { id: existingSa.id },
+      data: {
+        email: superEmail,
+        passwordHash: hashSecret(superPassword),
+        status: "active",
+        fullName: "Platform Owner"
+      }
+    });
+  } else {
+    await prisma.superAdminUser.create({
+      data: {
+        email: superEmail,
+        fullName: "Platform Owner",
+        passwordHash: hashSecret(superPassword),
+        status: "active"
+      }
+    });
+  }
 
-  const starterPlan = await prisma.subscriptionPlan.create({
-    data: {
+  const starterPlan = await prisma.subscriptionPlan.upsert({
+    where: { code: "starter" },
+    create: {
       code: "starter",
       name: "Starter",
       trialDays: 14,
@@ -31,8 +46,19 @@ async function main() {
       maxDevices: 20,
       maxUsers: 30,
       isActive: true
-    }
+    },
+    update: {}
   });
+
+  const existingDemo = await prisma.tenant.findFirst({ where: { slug: "demo-foods" } });
+  if (existingDemo) {
+    console.log({
+      super_admin_email: superEmail,
+      tenant_id: existingDemo.id,
+      note: "Demo tenant already present; super admin password was reset above."
+    });
+    return;
+  }
 
   const tenant = await prisma.tenant.create({
     data: {

@@ -13,7 +13,8 @@ export class SuperAdminService {
   ) {}
 
   async login(email: string, password: string) {
-    const user = await this.prisma.superAdminUser.findUnique({ where: { email } });
+    const normalized = email.trim().toLowerCase();
+    const user = await this.prisma.superAdminUser.findUnique({ where: { email: normalized } });
     if (!user || user.status !== "active" || !this.verifySecret(password, user.passwordHash)) {
       throw new ForbiddenException("Invalid credentials");
     }
@@ -998,9 +999,10 @@ export class SuperAdminService {
   async ensureBootstrapOwner() {
     const any = await this.prisma.superAdminUser.count();
     if (any > 0) return;
+    const email = (process.env.SUPER_ADMIN_EMAIL || "owner@postrend.local").trim().toLowerCase();
     await this.prisma.superAdminUser.create({
       data: {
-        email: process.env.SUPER_ADMIN_EMAIL || "owner@postrend.local",
+        email,
         fullName: "Platform Owner",
         passwordHash: this.hashSecret(process.env.SUPER_ADMIN_PASSWORD || "Owner123!"),
         status: "active"

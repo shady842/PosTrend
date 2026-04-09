@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { PortalLinks } from "@/components/portal-links";
 import { apiPost } from "@/lib/api";
 import { setSessionTokens } from "@/lib/auth";
 
@@ -45,6 +46,10 @@ export default function SuperAdminLoginPage() {
         <button disabled={loading} className="w-full bg-indigo-600 text-white">
           {loading ? "Signing in..." : "Login"}
         </button>
+        <div className="mt-6 border-t border-slate-200/80 pt-4 dark:border-slate-700">
+          <p className="muted mb-2 text-center text-xs">Other entry points</p>
+          <PortalLinks />
+        </div>
       </form>
     </div>
   );
