@@ -426,26 +426,39 @@ class _OrdersScreenState extends State<OrdersScreen> {
           ),
         ],
       ),
-      body: wide
-          ? Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SizedBox(width: 200, child: _categoryPane(context)),
-                const VerticalDivider(width: 1),
-                Expanded(flex: 5, child: _itemsPane(context)),
-                const VerticalDivider(width: 1),
-                SizedBox(width: 320, child: _cartPane(context)),
-              ],
-            )
-          : Column(
-              children: [
-                SizedBox(height: 56, child: _categoryStrip(context)),
-                const Divider(height: 1),
-                Expanded(child: _itemsPane(context)),
-                const Divider(height: 1),
-                SizedBox(height: 280, child: _cartPane(context)),
-              ],
-            ),
+      body: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.1),
+              Theme.of(context).colorScheme.tertiaryContainer.withValues(alpha: 0.08),
+              Theme.of(context).colorScheme.surface,
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: wide
+            ? Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(width: 200, child: _categoryPane(context)),
+                  const VerticalDivider(width: 1),
+                  Expanded(flex: 5, child: _itemsPane(context)),
+                  const VerticalDivider(width: 1),
+                  SizedBox(width: 320, child: _cartPane(context)),
+                ],
+              )
+            : Column(
+                children: [
+                  SizedBox(height: 56, child: _categoryStrip(context)),
+                  const Divider(height: 1),
+                  Expanded(child: _itemsPane(context)),
+                  const Divider(height: 1),
+                  SizedBox(height: 280, child: _cartPane(context)),
+                ],
+              ),
+      ),
     );
   }
 

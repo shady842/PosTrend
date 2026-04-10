@@ -616,80 +616,93 @@ class _TablesScreenState extends State<TablesScreen> {
               )
             : null,
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _layout == null || _layout!.sections.isEmpty
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(
-                      'No floor layout. Create floors & tables in admin, '
-                      'then refresh when online.\n'
-                      '${_showingCache ? '(Showing last cached layout)' : ''}',
-                      textAlign: TextAlign.center,
+      body: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.12),
+              Theme.of(context).colorScheme.tertiaryContainer.withValues(alpha: 0.08),
+              Theme.of(context).colorScheme.surface,
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _layout == null || _layout!.sections.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        'No floor layout. Create floors & tables in admin, '
+                        'then refresh when online.\n'
+                        '${_showingCache ? '(Showing last cached layout)' : ''}',
+                        textAlign: TextAlign.center,
+                      ),
                     ),
-                  ),
-                )
-              : Column(
-                  children: [
-                    if (_showingCache || !_online)
-                      Material(
-                        color: Colors.orange.shade100,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(Icons.cloud_off, color: Colors.orange.shade900),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  _showingCache
-                                      ? 'Offline or unreachable — showing cached layout'
-                                      : 'Device offline — using cache',
-                                  style: TextStyle(
-                                    color: Colors.orange.shade900,
-                                    fontWeight: FontWeight.w600,
+                  )
+                : Column(
+                    children: [
+                      if (_showingCache || !_online)
+                        Material(
+                          color: Colors.orange.shade100,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.cloud_off, color: Colors.orange.shade900),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _showingCache
+                                        ? 'Offline or unreachable — showing cached layout'
+                                        : 'Device offline — using cache',
+                                    style: TextStyle(
+                                      color: Colors.orange.shade900,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                    _legendStrip(context),
-                    Expanded(
-                      child: LayoutBuilder(
-                        builder: (ctx, c) {
-                          final wide = c.maxWidth >= 840;
-                          if (wide) {
-                            return Row(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                      _legendStrip(context),
+                      Expanded(
+                        child: LayoutBuilder(
+                          builder: (ctx, c) {
+                            final wide = c.maxWidth >= 840;
+                            if (wide) {
+                              return Row(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  SizedBox(
+                                    width: 192,
+                                    child: _floorList(context),
+                                  ),
+                                  const VerticalDivider(width: 1),
+                                  Expanded(child: _tableGrid(context)),
+                                ],
+                              );
+                            }
+                            return Column(
                               children: [
-                                SizedBox(
-                                  width: 192,
-                                  child: _floorList(context),
-                                ),
-                                const VerticalDivider(width: 1),
+                                SizedBox(height: 52, child: _floorStrip(context)),
+                                const Divider(height: 1),
                                 Expanded(child: _tableGrid(context)),
                               ],
                             );
-                          }
-                          return Column(
-                            children: [
-                              SizedBox(height: 52, child: _floorStrip(context)),
-                              const Divider(height: 1),
-                              Expanded(child: _tableGrid(context)),
-                            ],
-                          );
-                        },
+                          },
+                        ),
                       ),
-                    ),
-                    _bottomActions(context),
-                  ],
-                ),
+                      _bottomActions(context),
+                    ],
+                  ),
+      ),
     );
   }
 
