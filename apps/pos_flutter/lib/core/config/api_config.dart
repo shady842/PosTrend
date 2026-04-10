@@ -39,6 +39,12 @@ class ApiConfig {
   static String get deviceRefreshUrl => '$baseUrl/v1/pos/device-refresh';
   static String get posMenuUrl => '$baseUrl/v1/pos/menu';
   static String get posOrdersLayoutUrl => '$baseUrl/v1/pos/orders/layout';
+
+  static String get posJournalUrl => '$baseUrl/v1/pos/orders/journal';
+
+  static String get posJournalReopenUrl => '$baseUrl/v1/pos/orders/journal/reopen';
+
+  static String get posShiftsSalesReportUrl => '$baseUrl/v1/pos/shifts/sales-report';
   static String get posOrdersOpenTableUrl => '$baseUrl/v1/pos/orders/open-table';
   static String get posOrdersDeliveryUrl => '$baseUrl/v1/pos/orders/delivery';
   static String get posOrdersTransferTableUrl =>

@@ -89,7 +89,8 @@ export class ShiftService {
       expected += movement.type === "in" ? Number(movement.amount) : -Number(movement.amount);
     }
     const variance = Number((dto.ending_amount - expected).toFixed(2));
-    return this.prisma.$transaction(async (tx) => {
+    const periodStart = shift.startTime;
+    const result = await this.prisma.$transaction(async (tx) => {
       await tx.cashDrawer.update({
         where: { id: drawer.id },
         data: { closedAt: new Date(), closedBy: dto.closed_by, endingAmount: dto.ending_amount }
@@ -111,6 +112,118 @@ export class ShiftService {
       }
       return { shift_id: shift.id, status: "CLOSED", expected_amount: expected, variance };
     });
+    const sales_report = await this.posSalesReport(ctx, periodStart, new Date());
+    return { ...result, sales_report };
+  }
+
+  /** Sales / tax / discounts / payments / item & category breakdown for a time window (POS shift or day-close). */
+  async posSalesReport(ctx: TenantContext, from: Date, to: Date) {
+    const { tenant_id: tenantId, concept_id: conceptId, branch_id: branchId } = ctx;
+    const orders = await this.prisma.order.findMany({
+      where: {
+        tenantId,
+        conceptId,
+        branchId,
+        createdAt: { gte: from, lte: to },
+        status: { not: "VOIDED" }
+      },
+      include: {
+        payments: true,
+        discounts: true,
+        items: {
+          where: { status: { not: "VOIDED" } },
+          include: { menuItem: { include: { category: true } } }
+        }
+      }
+    });
+
+    let subtotalSum = 0;
+    let taxSum = 0;
+    let serviceSum = 0;
+    let discountSum = 0;
+    const byType: Record<string, { count: number; total: number }> = {};
+    for (const o of orders) {
+      subtotalSum += Number(o.subtotal);
+      taxSum += Number(o.tax);
+      serviceSum += Number(o.service);
+      for (const d of o.discounts) {
+        if (d.type === "percent") {
+          discountSum += (Number(o.subtotal) * Number(d.value)) / 100;
+        } else {
+          discountSum += Number(d.value);
+        }
+      }
+      const t = o.orderType || "UNKNOWN";
+      if (!byType[t]) byType[t] = { count: 0, total: 0 };
+      byType[t].count += 1;
+      byType[t].total += Number(o.total);
+    }
+
+    const payments = await this.prisma.payment.findMany({
+      where: {
+        tenantId,
+        conceptId,
+        branchId,
+        status: "paid",
+        paidAt: { gte: from, lte: to }
+      }
+    });
+    const byMethod: Record<string, number> = {};
+    for (const p of payments) {
+      const m = p.paymentMethod || "unknown";
+      byMethod[m] = Number((byMethod[m] || 0) + Number(p.amount));
+    }
+
+    const itemAgg = new Map<string, { qty: number; amount: number }>();
+    const catAgg = new Map<string, { qty: number; amount: number }>();
+    for (const o of orders) {
+      for (const it of o.items) {
+        const name = (it.nameSnapshot || it.menuItem?.name || "Item").trim();
+        const cat = it.menuItem?.category?.name || "Uncategorized";
+        const qty = Number(it.qty);
+        const amt = Number(it.lineTotal);
+        const cur = itemAgg.get(name) || { qty: 0, amount: 0 };
+        cur.qty += qty;
+        cur.amount += amt;
+        itemAgg.set(name, cur);
+        const ccur = catAgg.get(cat) || { qty: 0, amount: 0 };
+        ccur.qty += qty;
+        ccur.amount += amt;
+        catAgg.set(cat, ccur);
+      }
+    }
+
+    const salesTotal = orders.reduce((s, o) => s + Number(o.total), 0);
+    const paymentsTotal = payments.reduce((s, p) => s + Number(p.amount), 0);
+
+    return {
+      period: { from: from.toISOString(), to: to.toISOString() },
+      orders_count: orders.length,
+      subtotal: Number(subtotalSum.toFixed(2)),
+      tax: Number(taxSum.toFixed(2)),
+      service: Number(serviceSum.toFixed(2)),
+      discounts: Number(discountSum.toFixed(2)),
+      sales_total: Number(salesTotal.toFixed(2)),
+      by_order_type: byType,
+      payments_by_method: Object.fromEntries(
+        Object.entries(byMethod).map(([k, v]) => [k, Number(v.toFixed(2))])
+      ),
+      payments_total: Number(paymentsTotal.toFixed(2)),
+      items: [...itemAgg.entries()]
+        .map(([name, v]) => ({
+          name,
+          qty: Number(v.qty.toFixed(3)),
+          amount: Number(v.amount.toFixed(2))
+        }))
+        .sort((a, b) => b.amount - a.amount),
+      categories: [...catAgg.entries()]
+        .map(([name, v]) => ({
+          name,
+          qty: Number(v.qty.toFixed(3)),
+          amount: Number(v.amount.toFixed(2))
+        }))
+        .sort((a, b) => b.amount - a.amount)
+    };
   }
 
   async moveCash(ctx: TenantContext, dto: CashDrawerMoveDto) {
@@ -141,7 +254,7 @@ export class ShiftService {
     }
     const date = dto.date ? new Date(dto.date) : new Date();
     const orders = await this.prisma.order.findMany({
-      where: { branchId: ctx.branch_id, status: "closed" }
+      where: { branchId: ctx.branch_id, status: { in: ["CLOSED", "closed"] } }
     });
     const totalSales = orders.reduce((sum, o) => sum + Number(o.total), 0);
     const paymentRows = await this.prisma.payment.findMany({
@@ -183,6 +296,8 @@ export class ShiftService {
       }
     });
     const paymentTotal = Object.values(paymentSummary).reduce((s, v) => s + Number(v), 0);
+    const dayStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 0, 0, 0, 0));
+    const comprehensive_report = await this.posSalesReport(ctx, dayStart, new Date());
     return {
       closure,
       summary: {
@@ -202,13 +317,14 @@ export class ShiftService {
           counted_cash: Number(cashCounted.toFixed(2)),
           variance: Number(cashVariance.toFixed(2))
         }
-      }
+      },
+      comprehensive_report
     };
   }
 
   async dayCloseSummary(ctx: TenantContext) {
     const orders = await this.prisma.order.findMany({
-      where: { branchId: ctx.branch_id, status: "closed" }
+      where: { branchId: ctx.branch_id, status: { in: ["CLOSED", "closed"] } }
     });
     const totalSales = orders.reduce((sum, o) => sum + Number(o.total), 0);
 

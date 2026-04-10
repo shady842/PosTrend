@@ -24,6 +24,7 @@ import {
   UpdateDiningTableDto,
   UpdateSectionDto,
   UpdateQtyDto,
+  PosJournalQueryDto,
   VoidItemDto,
   VoidOrderDto
 } from "./dto/pos-orders.dto";
@@ -698,9 +699,11 @@ export class OrdersService {
     if (["VOIDED", "CLOSED", "closed", "PAID", "BILLED"].includes(existing.status)) {
       throw new BadRequestException("Finalized order cannot be sent to kitchen");
     }
-    const pendingItems = existing.items.filter(
-      (it) => it.status !== "VOIDED" && String(it.kitchenStatus).toUpperCase() === "OPEN"
-    );
+    const pendingItems = existing.items.filter((it) => {
+      if (it.status === "VOIDED") return false;
+      const ks = String(it.kitchenStatus || "").toUpperCase();
+      return ks === "OPEN" || ks === "NEW" || ks === "DRAFT";
+    });
     if (pendingItems.length == 0) {
       throw new BadRequestException("No new items to send to kitchen");
     }
@@ -793,7 +796,42 @@ export class OrdersService {
 
   async voidOrder(ctx: TenantContext, dto: VoidOrderDto) {
     const order = await this.getForTenant(dto.order_id, ctx);
+    const su = String(order.status).toUpperCase();
+    if (su === "VOIDED") {
+      throw new BadRequestException("Order is already voided");
+    }
+    const paidPayments = order.payments.filter((p) => p.status === "paid");
+    if (paidPayments.length > 0) {
+      await this.ensureManagerApproval(ctx, dto.manager_email, dto.manager_password, dto.manager_pin);
+    }
+
     await this.prisma.$transaction(async (tx) => {
+      for (const p of paidPayments) {
+        const agg = await tx.refund.aggregate({
+          where: { paymentId: p.id },
+          _sum: { amount: true }
+        });
+        const refunded = Number(agg._sum.amount || 0);
+        const payAmt = Number(p.amount);
+        const remaining = payAmt - refunded;
+        if (remaining > 0.0001) {
+          await tx.refund.create({
+            data: {
+              tenantId: ctx.tenant_id,
+              conceptId: ctx.concept_id,
+              branchId: ctx.branch_id,
+              orderId: order.id,
+              paymentId: p.id,
+              amount: remaining,
+              reason: dto.reason || "void_order",
+              status: "completed",
+              processedBy: ctx.sub,
+              processedAt: new Date()
+            }
+          });
+          await tx.payment.update({ where: { id: p.id }, data: { status: "refunded" } });
+        }
+      }
       await tx.orderItem.updateMany({
         where: { orderId: order.id },
         data: { status: "VOIDED", lineTotal: 0 }
@@ -803,7 +841,140 @@ export class OrdersService {
         data: { status: "VOIDED", subtotal: 0, tax: 0, service: 0, total: 0 }
       });
     });
+    this.realtimeGateway.broadcastOrderUpdated(order.tenantId, order.branchId, order.id);
     return this.getForTenant(order.id, ctx);
+  }
+
+  async reopenOrderForJournal(ctx: TenantContext, orderId: string) {
+    const order = await this.prisma.order.findFirst({
+      where: {
+        id: orderId,
+        tenantId: ctx.tenant_id,
+        conceptId: ctx.concept_id,
+        branchId: ctx.branch_id
+      },
+      include: { tableSession: true }
+    });
+    if (!order) throw new NotFoundException("Order not found");
+    const su = String(order.status).toUpperCase();
+    if (su === "VOIDED") {
+      throw new BadRequestException("Cannot reopen a voided order");
+    }
+    const isClosed = su === "CLOSED" || order.status === "closed";
+    const isPaidLike = su === "PAID" || su === "BILLED";
+    if (!isClosed && !isPaidLike) {
+      throw new BadRequestException("Order is already open in the journal sense");
+    }
+    await this.prisma.$transaction(async (tx) => {
+      if (order.tableSessionId) {
+        await tx.tableSession.update({
+          where: { id: order.tableSessionId },
+          data: { status: "OPEN", closedAt: null }
+        });
+      }
+      await tx.order.update({
+        where: { id: order.id },
+        data: { status: "OPEN", closedAt: null }
+      });
+    });
+    this.realtimeGateway.broadcastOrderUpdated(order.tenantId, order.branchId, order.id);
+    return this.getForTenant(order.id, ctx);
+  }
+
+  async listPosJournal(ctx: TenantContext, q: PosJournalQueryDto) {
+    const limit = q.limit ?? 80;
+    const where: Prisma.OrderWhereInput = {
+      tenantId: ctx.tenant_id,
+      conceptId: ctx.concept_id,
+      branchId: ctx.branch_id
+    };
+    const bill = q.bill_state ?? "all";
+    if (bill === "open") {
+      where.status = { notIn: ["VOIDED", "CLOSED", "closed"] };
+    } else if (bill === "closed") {
+      where.status = { in: ["CLOSED", "closed"] };
+    } else {
+      where.status = { not: "VOIDED" };
+    }
+    if (q.order_type?.trim()) {
+      where.orderType = q.order_type.trim();
+    }
+    if (q.opened_by?.trim()) {
+      where.openedBy = q.opened_by.trim();
+    }
+    if (q.device_id?.trim()) {
+      where.payments = { some: { deviceId: q.device_id.trim() } };
+    }
+    if (q.floor_id?.trim()) {
+      const tables = await this.prisma.diningTable.findMany({
+        where: {
+          floorId: q.floor_id.trim(),
+          tenantId: ctx.tenant_id,
+          branchId: ctx.branch_id
+        },
+        select: { id: true }
+      });
+      const ids = tables.map((t) => t.id);
+      if (ids.length === 0) {
+        return [];
+      }
+      where.tableSession = { tableId: { in: ids } };
+    }
+
+    const rows = await this.prisma.order.findMany({
+      where,
+      include: {
+        payments: { select: { deviceId: true } },
+        tableSession: true
+      },
+      orderBy: [{ openedAt: "desc" }, { createdAt: "desc" }],
+      take: limit
+    });
+
+    const tableIds = [
+      ...new Set(rows.map((o) => o.tableSession?.tableId).filter((id): id is string => Boolean(id)))
+    ];
+    const tables = tableIds.length
+      ? await this.prisma.diningTable.findMany({
+          where: {
+            id: { in: tableIds },
+            tenantId: ctx.tenant_id,
+            branchId: ctx.branch_id
+          },
+          select: { id: true, name: true, floorId: true }
+        })
+      : [];
+    const floorIds = [...new Set(tables.map((t) => t.floorId))];
+    const floors = floorIds.length
+      ? await this.prisma.floor.findMany({
+          where: { id: { in: floorIds }, tenantId: ctx.tenant_id, branchId: ctx.branch_id },
+          select: { id: true, name: true }
+        })
+      : [];
+    const tableMap = new Map(tables.map((t) => [t.id, t]));
+    const floorMap = new Map(floors.map((f) => [f.id, f.name]));
+
+    return rows.map((o) => {
+      const tid = o.tableSession?.tableId;
+      const t = tid ? tableMap.get(tid) : undefined;
+      const section = t ? floorMap.get(t.floorId) ?? null : null;
+      return {
+        id: o.id,
+        order_number: o.orderNumber,
+        order_type: o.orderType,
+        status: o.status,
+        total: Number(o.total),
+        tax: Number(o.tax),
+        service: Number(o.service),
+        subtotal: Number(o.subtotal),
+        opened_at: o.openedAt?.toISOString() ?? null,
+        opened_by: o.openedBy,
+        closed_at: o.closedAt?.toISOString() ?? null,
+        table_label: t?.name ?? null,
+        section_name: section,
+        device_ids: [...new Set(o.payments.map((p) => p.deviceId).filter((x): x is string => Boolean(x)))]
+      };
+    });
   }
 
   async activeOrders(ctx: TenantContext) {

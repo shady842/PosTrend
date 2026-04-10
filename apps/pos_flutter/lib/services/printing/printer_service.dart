@@ -314,6 +314,22 @@ class PrinterService {
     return bytes;
   }
 
+  Future<bool> printTextReport({required String title, required String body}) async {
+    final cfg = await loadConfig();
+    final profile = await CapabilityProfile.load();
+    final paper = cfg.paperSizeMm == 58 ? PaperSize.mm58 : PaperSize.mm80;
+    final gen = Generator(paper, profile);
+    var bytes = <int>[];
+    bytes += await _header(gen, cfg, title: title);
+    for (final raw in body.split('\n')) {
+      final line = raw.trimRight();
+      bytes += gen.text(line.isEmpty ? ' ' : line);
+    }
+    bytes += gen.feed(2);
+    bytes += gen.cut();
+    return _sendBytes(cfg, bytes);
+  }
+
   Future<bool> _sendBytes(PrinterConfig cfg, List<int> bytes) async {
     if (!cfg.enabled || cfg.printerAddress.trim().isEmpty) return false;
 

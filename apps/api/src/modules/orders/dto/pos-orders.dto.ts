@@ -1,4 +1,5 @@
-import { IsBoolean, IsIn, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from "class-validator";
+import { Type } from "class-transformer";
+import { IsBoolean, IsIn, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Max, Min } from "class-validator";
 
 export class OpenTableOrderDto {
   @IsString()
@@ -197,6 +198,56 @@ export class VoidItemDto {
 export class VoidOrderDto {
   @IsString()
   order_id!: string;
+
+  @IsOptional()
+  @IsString()
+  manager_email?: string;
+
+  @IsOptional()
+  @IsString()
+  manager_password?: string;
+
+  @IsOptional()
+  @IsString()
+  manager_pin?: string;
+
+  @IsOptional()
+  @IsString()
+  reason?: string;
+}
+
+export class ReopenOrderDto {
+  @IsString()
+  order_id!: string;
+}
+
+export class PosJournalQueryDto {
+  @IsOptional()
+  @IsIn(["all", "open", "closed"])
+  bill_state?: "all" | "open" | "closed";
+
+  @IsOptional()
+  @IsString()
+  order_type?: string;
+
+  @IsOptional()
+  @IsString()
+  opened_by?: string;
+
+  @IsOptional()
+  @IsString()
+  device_id?: string;
+
+  @IsOptional()
+  @IsString()
+  floor_id?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(200)
+  limit?: number;
 }
 
 export class MonitorMoveDto {

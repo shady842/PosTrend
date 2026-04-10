@@ -418,6 +418,16 @@ export class PosSyncService {
       }
     }
 
+    // Walk-in / quick order uses offline sync — still create KDS tickets like dine-in/delivery.
+    try {
+      await this.ordersService.sendKitchen(order.id, ctx);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!msg.includes("No new items to send")) {
+        throw e;
+      }
+    }
+
     return { order_id: order.id, lines: lines.length };
   }
 

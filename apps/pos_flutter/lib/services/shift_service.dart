@@ -154,6 +154,35 @@ class ShiftService {
     }
   }
 
+  /// Live sales breakdown for the open shift (or pass custom `from` / `to` ISO-8601).
+  Future<Map<String, dynamic>?> fetchPosSalesReport({String? from, String? to}) async {
+    final token = await _bearer();
+    if (token == null) return null;
+    try {
+      final q = <String, String>{
+        if (from != null && from.isNotEmpty) 'from': from,
+        if (to != null && to.isNotEmpty) 'to': to,
+      };
+      final uri = Uri.parse(ApiConfig.posShiftsSalesReportUrl).replace(queryParameters: q);
+      final res = await http
+          .get(
+            uri,
+            headers: {
+              ..._jsonAuthHeaders,
+              'Authorization': 'Bearer $token',
+            },
+          )
+          .timeout(const Duration(seconds: 30));
+      if (res.statusCode < 200 || res.statusCode >= 300) return null;
+      final data = jsonDecode(res.body);
+      return data is Map<String, dynamic>
+          ? data
+          : Map<String, dynamic>.from(data as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<Map<String, dynamic>?> dayCloseSummary() async {
     final token = await _bearer();
     if (token == null) return null;
@@ -204,4 +233,64 @@ class ShiftService {
   }
 
   static String money(dynamic v) => '\$${_toDouble(v).toStringAsFixed(2)}';
+
+  /// Plain-text report for share / print / email body.
+  static String formatSalesReport(Map<String, dynamic> r) {
+    final buf = StringBuffer();
+    final period = r['period'];
+    if (period is Map) {
+      buf.writeln('Period: ${period['from']} → ${period['to']}');
+    }
+    buf.writeln('Orders: ${r['orders_count'] ?? 0}');
+    buf.writeln('Subtotal: ${money(r['subtotal'])}');
+    buf.writeln('Tax: ${money(r['tax'])}');
+    buf.writeln('Service: ${money(r['service'])}');
+    buf.writeln('Discounts: ${money(r['discounts'])}');
+    buf.writeln('Sales total: ${money(r['sales_total'])}');
+    buf.writeln('');
+    buf.writeln('Payments total: ${money(r['payments_total'])}');
+    final byMethod = r['payments_by_method'];
+    if (byMethod is Map) {
+      buf.writeln('By payment method:');
+      for (final e in byMethod.entries) {
+        buf.writeln('  ${e.key}: ${money(e.value)}');
+      }
+    }
+    final byType = r['by_order_type'];
+    if (byType is Map) {
+      buf.writeln('');
+      buf.writeln('By order type:');
+      for (final e in byType.entries) {
+        final v = e.value;
+        if (v is Map) {
+          buf.writeln('  ${e.key}: ${v['count']} checks, ${money(v['total'])}');
+        }
+      }
+    }
+    buf.writeln('');
+    buf.writeln('--- Items ---');
+    final items = r['items'];
+    if (items is List) {
+      for (final row in items) {
+        if (row is Map) {
+          buf.writeln(
+            '  ${row['name']}: qty ${row['qty']}  ${money(row['amount'])}',
+          );
+        }
+      }
+    }
+    buf.writeln('');
+    buf.writeln('--- Categories ---');
+    final cats = r['categories'];
+    if (cats is List) {
+      for (final row in cats) {
+        if (row is Map) {
+          buf.writeln(
+            '  ${row['name']}: qty ${row['qty']}  ${money(row['amount'])}',
+          );
+        }
+      }
+    }
+    return buf.toString();
+  }
 }

@@ -6,6 +6,7 @@ import '../../services/pos_realtime_sync.dart';
 import '../../widgets/large_touch_button.dart';
 import 'kds_screen.dart';
 import 'delivery_screen.dart';
+import 'journal_screen.dart';
 import 'orders_screen.dart';
 import 'payment_screen.dart';
 import 'settings_screen.dart';
@@ -174,6 +175,15 @@ class _PosHomeScreenState extends State<PosHomeScreen> {
                 onPressed: () => Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const KdsScreen()),
+                ),
+              ),
+              LargeTouchButton(
+                label: 'Journal',
+                icon: Icons.menu_book_outlined,
+                color: Colors.deepPurple,
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const JournalScreen()),
                 ),
               ),
               LargeTouchButton(

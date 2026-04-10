@@ -1,6 +1,8 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/storage/local_storage.dart';
+import '../../services/printing/printer_service.dart';
 import '../../services/shift_service.dart';
 import 'cashier_login_screen.dart';
 
@@ -14,11 +16,14 @@ class ShiftWizardScreen extends StatefulWidget {
 class _ShiftWizardScreenState extends State<ShiftWizardScreen> {
   final _storage = LocalStorage();
   late final ShiftService _shift = ShiftService(_storage);
+  late final PrinterService _printer = PrinterService(_storage);
 
   bool _loading = true;
   bool _busy = false;
   ShiftCurrentState? _current;
   Map<String, dynamic>? _summary;
+  /// Live POS report for the open shift window (`GET /v1/pos/shifts/sales-report`).
+  Map<String, dynamic>? _shiftReport;
 
   final _nameCtrl = TextEditingController(text: 'Main Shift');
   final _cashierCtrl = TextEditingController();
@@ -50,16 +55,89 @@ class _ShiftWizardScreenState extends State<ShiftWizardScreen> {
     setState(() => _loading = true);
     final current = await _shift.currentShift();
     final summary = await _shift.dayCloseSummary();
+    Map<String, dynamic>? rep;
+    if (current != null) {
+      rep = await _shift.fetchPosSalesReport();
+    }
     if (!mounted) return;
     setState(() {
       _current = current;
       _summary = summary;
+      _shiftReport = rep;
       _loading = false;
       _step = current == null ? 0 : 1;
       if (current != null) {
         _countCtrl.text = current.expectedAmount.toStringAsFixed(2);
       }
     });
+  }
+
+  Future<void> _shareReport(String title, Map<String, dynamic> report) async {
+    final text = ShiftService.formatSalesReport(report);
+    await Share.share(text, subject: title);
+  }
+
+  Future<void> _printReport(String title, Map<String, dynamic> report) async {
+    final text = ShiftService.formatSalesReport(report);
+    final ok = await _printer.printTextReport(title: title, body: text);
+    if (!mounted) return;
+    _snack(ok ? 'Sent to printer' : 'Printer disabled or unreachable');
+  }
+
+  Future<void> _showReportSheet(String title, Map<String, dynamic> report) async {
+    final text = ShiftService.formatSalesReport(report);
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            bottom: MediaQuery.paddingOf(ctx).bottom + 16,
+            top: 8,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(title, style: Theme.of(ctx).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+              const SizedBox(height: 12),
+              SizedBox(
+                height: MediaQuery.sizeOf(ctx).height * 0.45,
+                child: SingleChildScrollView(child: SelectableText(text)),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _shareReport(title, report),
+                      icon: const Icon(Icons.share_outlined),
+                      label: const Text('Share'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () => _printReport(title, report),
+                      icon: const Icon(Icons.print_outlined),
+                      label: const Text('Print'),
+                    ),
+                  ),
+                ],
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Close'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   double _moneyInput(TextEditingController c) {
@@ -118,6 +196,11 @@ class _ShiftWizardScreenState extends State<ShiftWizardScreen> {
     }
     final variance = ShiftService.money(res['variance']);
     _snack('Shift closed. Variance: $variance');
+    final rawRep = res['sales_report'];
+    if (rawRep is Map) {
+      final report = Map<String, dynamic>.from(rawRep);
+      await _showReportSheet('Shift close report', report);
+    }
     final deviceToken = await _storage.getDeviceAuthToken();
     await _storage.saveJwt(deviceToken ?? '');
     if (!mounted) return;
@@ -142,16 +225,84 @@ class _ShiftWizardScreenState extends State<ShiftWizardScreen> {
       return;
     }
     _snack('Day close posted');
+    final comp = res['comprehensive_report'];
+    if (comp is Map) {
+      await _showReportSheet('Day close report', Map<String, dynamic>.from(comp));
+    }
     await _refresh();
   }
 
   Widget _summaryCard() {
+    final rep = _shiftReport;
+    if (rep != null) {
+      final items = (rep['items'] as List?) ?? const [];
+      final cats = (rep['categories'] as List?) ?? const [];
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Shift sales report',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+              ),
+              const SizedBox(height: 6),
+              Text('Orders: ${rep['orders_count'] ?? 0}'),
+              Text('Sales total: ${ShiftService.money(rep['sales_total'])}'),
+              Text('Tax: ${ShiftService.money(rep['tax'])} · Service: ${ShiftService.money(rep['service'])}'),
+              Text('Discounts: ${ShiftService.money(rep['discounts'])}'),
+              Text('Payments: ${ShiftService.money(rep['payments_total'])}'),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _busy ? null : () => _shareReport('Shift sales report', rep),
+                      icon: const Icon(Icons.share_outlined),
+                      label: const Text('Share'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _busy ? null : () => _printReport('Shift sales report', rep),
+                      icon: const Icon(Icons.print_outlined),
+                      label: const Text('Print'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text('Top items (${items.length})', style: const TextStyle(fontWeight: FontWeight.w700)),
+              ...items.take(5).map((row) {
+                if (row is! Map) return const SizedBox.shrink();
+                final m = Map<String, dynamic>.from(row);
+                return Text('  ${m['name']}: ${m['qty']} → ${ShiftService.money(m['amount'])}');
+              }),
+              const SizedBox(height: 6),
+              Text('Categories (${cats.length})', style: const TextStyle(fontWeight: FontWeight.w700)),
+              ...cats.take(5).map((row) {
+                if (row is! Map) return const SizedBox.shrink();
+                final m = Map<String, dynamic>.from(row);
+                return Text('  ${m['name']}: ${ShiftService.money(m['amount'])}');
+              }),
+            ],
+          ),
+        ),
+      );
+    }
+
     final s = _summary;
     if (s == null) {
-      return const Card(
+      return Card(
         child: Padding(
-          padding: EdgeInsets.all(14),
-          child: Text('No day-close summary available.'),
+          padding: const EdgeInsets.all(14),
+          child: Text(
+            _current == null
+                ? 'Open a shift to see a live sales, tax, payment, item and category report here.'
+                : 'Could not load shift report. Check login permissions or try refresh.',
+          ),
         ),
       );
     }

@@ -15,7 +15,9 @@ import {
   OpenTakeawayOrderDto,
   MonitorMoveDto,
   MoveItemDto,
+  PosJournalQueryDto,
   RemoveItemDto,
+  ReopenOrderDto,
   SendKitchenDto,
   SplitOrderDto,
   MergeOrdersDto,
@@ -195,6 +197,18 @@ export class PosOrdersController {
   @Get("layout")
   layout(@CurrentTenant() ctx: TenantContext, @Query("branch_id") branchId?: string) {
     return this.ordersService.getTableLayout(ctx, branchId);
+  }
+
+  @Get("journal")
+  @Permissions("pos.orders.open")
+  journal(@CurrentTenant() ctx: TenantContext, @Query() q: PosJournalQueryDto) {
+    return this.ordersService.listPosJournal(ctx, q);
+  }
+
+  @Post("journal/reopen")
+  @Permissions("pos.orders.edit")
+  journalReopen(@CurrentTenant() ctx: TenantContext, @Body() dto: ReopenOrderDto) {
+    return this.ordersService.reopenOrderForJournal(ctx, dto.order_id);
   }
 
   @Get(":id")

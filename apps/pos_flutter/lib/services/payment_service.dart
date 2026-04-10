@@ -352,10 +352,25 @@ class PaymentService {
     }
   }
 
-  Future<bool> voidOrder(String orderId) async {
+  /// Voids the check. Paid orders require manager PIN (or email/password) on the API.
+  Future<(bool ok, String? error)> voidOrder({
+    required String orderId,
+    String? managerPin,
+    String? managerEmail,
+    String? managerPassword,
+    String? reason,
+  }) async {
     final token = await _bearer();
-    if (token == null) return false;
+    if (token == null) return (false, 'Not logged in');
     try {
+      final body = <String, dynamic>{
+        'order_id': orderId,
+        if (managerPin != null && managerPin.trim().isNotEmpty) 'manager_pin': managerPin.trim(),
+        if (managerEmail != null && managerEmail.trim().isNotEmpty) 'manager_email': managerEmail.trim(),
+        if (managerPassword != null && managerPassword.trim().isNotEmpty)
+          'manager_password': managerPassword.trim(),
+        if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
+      };
       final res = await http
           .post(
             Uri.parse(ApiConfig.posOrdersVoidOrderUrl),
@@ -363,12 +378,19 @@ class PaymentService {
               ..._jsonAuthHeaders,
               'Authorization': 'Bearer $token',
             },
-            body: jsonEncode({'order_id': orderId}),
+            body: jsonEncode(body),
           )
           .timeout(const Duration(seconds: 25));
-      return res.statusCode >= 200 && res.statusCode < 300;
-    } catch (_) {
-      return false;
+      if (res.statusCode >= 200 && res.statusCode < 300) return (true, null);
+      try {
+        final map = jsonDecode(res.body) as Map<String, dynamic>;
+        final msg = (map['message'] ?? 'Void failed').toString();
+        return (false, msg);
+      } catch (_) {
+        return (false, 'Void failed (${res.statusCode})');
+      }
+    } catch (e) {
+      return (false, e.toString());
     }
   }
 

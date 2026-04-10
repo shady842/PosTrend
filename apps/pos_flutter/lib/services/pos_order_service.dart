@@ -231,6 +231,52 @@ class PosOrderService {
     return _parseOrder(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
+  Future<List<Map<String, dynamic>>> fetchJournal({
+    String? billState,
+    String? orderType,
+    String? openedBy,
+    String? deviceId,
+    String? floorId,
+    int limit = 80,
+  }) async {
+    final jwt = await _jwt();
+    final q = <String, String>{
+      if (billState != null && billState.isNotEmpty) 'bill_state': billState,
+      if (orderType != null && orderType.isNotEmpty) 'order_type': orderType,
+      if (openedBy != null && openedBy.isNotEmpty) 'opened_by': openedBy,
+      if (deviceId != null && deviceId.isNotEmpty) 'device_id': deviceId,
+      if (floorId != null && floorId.isNotEmpty) 'floor_id': floorId,
+      'limit': '$limit',
+    };
+    final uri = Uri.parse(ApiConfig.posJournalUrl).replace(queryParameters: q);
+    final res = await http.get(
+      uri,
+      headers: {..._headers, 'Authorization': 'Bearer $jwt'},
+    );
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception('Could not load journal');
+    }
+    final decoded = jsonDecode(res.body);
+    if (decoded is! List) return [];
+    return decoded
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  Future<PosOrderSnapshot> reopenFromJournal(String orderId) async {
+    final jwt = await _jwt();
+    final res = await http.post(
+      Uri.parse(ApiConfig.posJournalReopenUrl),
+      headers: {..._headers, 'Authorization': 'Bearer $jwt'},
+      body: jsonEncode({'order_id': orderId}),
+    );
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception('Could not reopen order');
+    }
+    return _parseOrder(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
   Future<Map<String, dynamic>> splitOrderItems({
     required String orderId,
     required List<String> orderItemIds,

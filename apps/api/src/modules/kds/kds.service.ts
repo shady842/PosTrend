@@ -187,7 +187,13 @@ export class KdsService {
         id: t.id,
         order_id: t.orderId,
         order_number: t.order.orderNumber || null,
-        table_label: table?.name || (t.order.orderType === "TAKEAWAY" ? "Takeaway" : t.order.orderType === "DELIVERY" ? "Delivery" : null),
+        table_label:
+          table?.name ||
+          (t.order.orderType === "TAKEAWAY"
+            ? "Quick order"
+            : t.order.orderType === "DELIVERY"
+              ? "Delivery"
+              : null),
         section_name: sectionName,
         status: t.status,
         created_at: t.createdAt.toISOString(),

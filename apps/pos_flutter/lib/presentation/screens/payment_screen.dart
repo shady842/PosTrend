@@ -598,11 +598,40 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   Future<void> _voidOrder() async {
+    final pinCtrl = TextEditingController();
+    final reasonCtrl = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Void order'),
-        content: const Text('This will void the full order. Continue?'),
+        title: const Text('Void check'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Voids the whole check. If payments were taken, refunds are recorded and a manager PIN is required.',
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: pinCtrl,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Manager PIN (required if paid)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: reasonCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Reason (optional)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -617,11 +646,17 @@ class _PaymentScreenState extends State<PaymentScreen> {
     );
     if (ok != true || !mounted) return;
     setState(() => _busy = true);
-    final done = await _payments.voidOrder(widget.orderId);
+    final (done, err) = await _payments.voidOrder(
+      orderId: widget.orderId,
+      managerPin: pinCtrl.text,
+      reason: reasonCtrl.text,
+    );
+    pinCtrl.dispose();
+    reasonCtrl.dispose();
     if (!mounted) return;
     setState(() => _busy = false);
     await _reload();
-    _snack(done ? 'Order voided' : 'Void failed');
+    _snack(done ? 'Order voided' : (err ?? 'Void failed'));
   }
 
   void _showReceiptPreview() {
