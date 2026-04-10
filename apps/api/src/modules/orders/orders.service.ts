@@ -217,6 +217,10 @@ export class OrdersService {
       notes?: string;
       client_order_id?: string;
       customer_id?: string;
+      delivery_contact_name?: string;
+      delivery_phone?: string;
+      delivery_address?: string;
+      delivery_instructions?: string;
     }
   ) {
     await this.shiftService.ensureOpenShift(ctx);
@@ -247,6 +251,13 @@ export class OrdersService {
         guestCount: payload.guest_count ?? 1,
         notes: payload.notes,
         customerId: payload.customer_id,
+        deliveryContactName:
+          orderType === "DELIVERY" ? payload.delivery_contact_name : undefined,
+        deliveryPhone: orderType === "DELIVERY" ? payload.delivery_phone : undefined,
+        deliveryAddress:
+          orderType === "DELIVERY" ? payload.delivery_address : undefined,
+        deliveryInstructions:
+          orderType === "DELIVERY" ? payload.delivery_instructions : undefined,
         openedBy: ctx.sub,
         openedAt: new Date(),
         channel: orderType.toLowerCase(),

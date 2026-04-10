@@ -36,7 +36,23 @@ export class OpenTakeawayOrderDto {
   customer_id?: string;
 }
 
-export class OpenDeliveryOrderDto extends OpenTakeawayOrderDto {}
+export class OpenDeliveryOrderDto extends OpenTakeawayOrderDto {
+  @IsOptional()
+  @IsString()
+  delivery_contact_name?: string;
+
+  @IsOptional()
+  @IsString()
+  delivery_phone?: string;
+
+  @IsOptional()
+  @IsString()
+  delivery_address?: string;
+
+  @IsOptional()
+  @IsString()
+  delivery_instructions?: string;
+}
 
 export class AddItemPosDto {
   @IsString()

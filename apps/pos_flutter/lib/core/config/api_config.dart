@@ -40,6 +40,7 @@ class ApiConfig {
   static String get posMenuUrl => '$baseUrl/v1/pos/menu';
   static String get posOrdersLayoutUrl => '$baseUrl/v1/pos/orders/layout';
   static String get posOrdersOpenTableUrl => '$baseUrl/v1/pos/orders/open-table';
+  static String get posOrdersDeliveryUrl => '$baseUrl/v1/pos/orders/delivery';
   static String get posOrdersTransferTableUrl =>
       '$baseUrl/v1/pos/orders/transfer-table';
   static String get posOrdersMergeOrdersUrl =>
@@ -57,6 +58,7 @@ class ApiConfig {
       '$baseUrl/v1/pos/payments/$orderId';
 
   static String get posPaymentsAddUrl => '$baseUrl/v1/pos/payments/add';
+  static String get customersUrl => '$baseUrl/v1/customers';
 
   static String get posPaymentsSplitUrl => '$baseUrl/v1/pos/payments/split';
 

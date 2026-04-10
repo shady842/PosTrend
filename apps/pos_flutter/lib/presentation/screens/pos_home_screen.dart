@@ -5,6 +5,7 @@ import '../../core/network/connectivity_service.dart';
 import '../../services/pos_realtime_sync.dart';
 import '../../widgets/large_touch_button.dart';
 import 'kds_screen.dart';
+import 'delivery_screen.dart';
 import 'orders_screen.dart';
 import 'payment_screen.dart';
 import 'settings_screen.dart';
@@ -118,50 +119,80 @@ class _PosHomeScreenState extends State<PosHomeScreen> {
         ],
       ),
       body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: GridView.count(
-          crossAxisCount: isTablet ? 3 : 2,
-          crossAxisSpacing: 14,
-          mainAxisSpacing: 14,
-          childAspectRatio: 2.1,
-          children: [
-            LargeTouchButton(
-              label: 'Orders',
-              icon: Icons.receipt_long,
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen())),
+        padding: const EdgeInsets.all(14),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.22),
+                Theme.of(context).colorScheme.tertiaryContainer.withValues(alpha: 0.12),
+                Theme.of(context).colorScheme.surface,
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-            LargeTouchButton(
-              label: 'Tables',
-              icon: Icons.table_restaurant,
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TablesScreen())),
-            ),
-            LargeTouchButton(
-              label: 'Payment',
-              icon: Icons.payments,
-              onPressed: _openPaymentByOrderId,
-            ),
-            LargeTouchButton(
-              label: 'KDS',
-              icon: Icons.kitchen,
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const KdsScreen()),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: GridView.count(
+            padding: const EdgeInsets.all(14),
+            crossAxisCount: isTablet ? 3 : 2,
+            crossAxisSpacing: 14,
+            mainAxisSpacing: 14,
+            childAspectRatio: 2.1,
+            children: [
+              LargeTouchButton(
+                label: 'Orders',
+                icon: Icons.receipt_long,
+                color: Colors.indigo,
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrdersScreen())),
               ),
-            ),
-            LargeTouchButton(
-              label: 'Shift',
-              icon: Icons.point_of_sale,
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ShiftWizardScreen()),
+              LargeTouchButton(
+                label: 'Tables',
+                icon: Icons.table_restaurant,
+                color: Colors.teal,
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TablesScreen())),
               ),
-            ),
-            LargeTouchButton(
-              label: 'Settings',
-              icon: Icons.settings,
-              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
-            ),
-          ],
+              LargeTouchButton(
+                label: 'Delivery',
+                icon: Icons.delivery_dining,
+                color: Colors.deepOrange,
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const DeliveryScreen()),
+                ),
+              ),
+              LargeTouchButton(
+                label: 'Payment',
+                icon: Icons.payments,
+                color: Colors.purple,
+                onPressed: _openPaymentByOrderId,
+              ),
+              LargeTouchButton(
+                label: 'KDS',
+                icon: Icons.kitchen,
+                color: Colors.blue,
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const KdsScreen()),
+                ),
+              ),
+              LargeTouchButton(
+                label: 'Shift',
+                icon: Icons.point_of_sale,
+                color: Colors.green,
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ShiftWizardScreen()),
+                ),
+              ),
+              LargeTouchButton(
+                label: 'Settings',
+                icon: Icons.settings,
+                color: Colors.brown,
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
+              ),
+            ],
+          ),
         ),
       ),
     );

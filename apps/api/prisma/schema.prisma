@@ -458,6 +458,10 @@ model Order {
   orderNumber String?
   guestCount  Int         @default(1)
   notes       String?
+  deliveryContactName String?
+  deliveryPhone String?
+  deliveryAddress String?
+  deliveryInstructions String?
   openedBy    String?
   openedAt    DateTime?
   closedAt    DateTime?
