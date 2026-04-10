@@ -9,7 +9,6 @@ import '../../domain/entities/table_layout.dart';
 import '../../services/pos_realtime_sync.dart';
 import '../../services/tables_layout_service.dart';
 import 'orders_screen.dart';
-import 'payment_screen.dart';
 
 enum _ToolbarMode {
   normal,
@@ -196,8 +195,20 @@ class _TablesScreenState extends State<TablesScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Opened ${table.name}')),
       );
+      await _refresh();
+      final matches = _layout?.sections
+              .expand((s) => s.tables)
+              .where((t) => t.id == table.id)
+              .toList() ??
+          <DiningTableTile>[];
+      final opened = matches.isNotEmpty ? matches.first.activeOrderId : null;
       await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const OrdersScreen()),
+        MaterialPageRoute(
+          builder: (_) => OrdersScreen(
+            orderId: opened,
+            mode: OrdersMode.dineInEdit,
+          ),
+        ),
       );
     } else if (result == TableActionResult.queued) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -255,7 +266,7 @@ class _TablesScreenState extends State<TablesScreen> {
                   ),
                   onPressed: () {
                     Navigator.pop(ctx);
-                    _openCheck(orderId);
+                    _openOrder(orderId);
                   },
                   icon: const Icon(Icons.receipt_long),
                   label: const Text('Open check'),
@@ -310,9 +321,14 @@ class _TablesScreenState extends State<TablesScreen> {
     );
   }
 
-  Future<void> _openCheck(String orderId) async {
+  Future<void> _openOrder(String orderId) async {
     await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => PaymentScreen(orderId: orderId)),
+      MaterialPageRoute(
+        builder: (_) => OrdersScreen(
+          orderId: orderId,
+          mode: OrdersMode.dineInEdit,
+        ),
+      ),
     );
     if (!mounted) return;
     await _refresh();
@@ -548,7 +564,7 @@ class _TablesScreenState extends State<TablesScreen> {
     if (vis == TableVisualStatus.available || table.activeOrderId == null) {
       await _openTableFlow(table);
     } else {
-      await _openCheck(table.activeOrderId!);
+      await _openOrder(table.activeOrderId!);
     }
   }
 

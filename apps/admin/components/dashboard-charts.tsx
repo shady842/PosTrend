@@ -12,39 +12,36 @@ import {
   Pie,
   Cell,
   BarChart,
-  Bar
+  Bar,
+  Legend
 } from "recharts";
 import { ChartCard } from "@/components/chart-card";
 import { EmptyState } from "@/components/empty-state";
 import { DataTable } from "@/components/data-table";
-import { motion } from "framer-motion";
-import { Plus, Download, RefreshCw } from "lucide-react";
 
 const pieColors = ["#6366f1", "#0ea5e9", "#f59e0b", "#10b981", "#f43f5e"];
 
 export type DashboardChartsProps = {
   salesSeries: Array<{ date: string; value: number }>;
   categorySeries: Array<{ name: string; value: number }>;
-  hourlySeries: Array<{ hour: string; orders: number }>;
+  hourlySeries: Array<{ hour: string; invoices: number; sales: number }>;
+  cashierSeries: Array<{ user: string; orders: number; sales: number }>;
+  paymentMethodSeries: Array<{ method: string; count: number; amount: number }>;
   topItems: Array<{ item_name: string; qty: number; revenue: number }>;
   timeline: Array<{ hour: string; orders: number; sales: number }>;
-  onQuickAction: (label: string) => void;
+  invoiceSeries: Array<{ invoice_no: string; opened_at: string; order_type: string; status: string; total: number }>;
 };
 
 export default function DashboardCharts({
   salesSeries,
   categorySeries,
   hourlySeries,
+  cashierSeries,
+  paymentMethodSeries,
   topItems,
   timeline,
-  onQuickAction
+  invoiceSeries
 }: DashboardChartsProps) {
-  const quickActions = [
-    { label: "New Order", icon: Plus },
-    { label: "Export Report", icon: Download },
-    { label: "Refresh Data", icon: RefreshCw }
-  ];
-
   return (
     <>
       <div className="grid gap-4 lg:grid-cols-3">
@@ -75,40 +72,55 @@ export default function DashboardCharts({
             <EmptyState title="No category data" description="Create some orders to visualize category mix." />
           )}
         </ChartCard>
-        <ChartCard title="Hourly Bar Chart">
+        <ChartCard title="Hourly Sales & Invoices">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={hourlySeries}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="hour" />
               <YAxis />
               <Tooltip />
-              <Bar dataKey="orders" fill="#0ea5e9" radius={[8, 8, 0, 0]} />
+              <Legend />
+              <Bar dataKey="invoices" fill="#0ea5e9" radius={[8, 8, 0, 0]} />
+              <Bar dataKey="sales" fill="#6366f1" radius={[8, 8, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <div className="card p-4 lg:col-span-1">
-          <h3 className="mb-3 text-sm font-semibold">Quick Actions</h3>
-          <div className="grid gap-2">
-            {quickActions.map((action) => {
-              const Icon = action.icon;
-              return (
-                <motion.button
-                  whileHover={{ y: -1 }}
-                  key={action.label}
-                  className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-3 dark:border-slate-700 dark:bg-slate-900"
-                  onClick={() => onQuickAction(action.label)}
-                >
-                  <span>{action.label}</span>
-                  <Icon className="h-4 w-4" />
-                </motion.button>
-              );
-            })}
-          </div>
-        </div>
-        <div className="lg:col-span-2">
+        <ChartCard title="Payment Methods">
+          {paymentMethodSeries.length ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={paymentMethodSeries} dataKey="amount" nameKey="method" innerRadius={42} outerRadius={78}>
+                  {paymentMethodSeries.map((_, i) => (
+                    <Cell key={i} fill={pieColors[i % pieColors.length]} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(v) => `$${Number(v || 0).toFixed(2)}`} />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <EmptyState title="No payment data" description="Payments by method will appear once checks are paid." />
+          )}
+        </ChartCard>
+        <ChartCard title="Top Cashiers (Sales)">
+          {cashierSeries.length ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={cashierSeries}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="user" />
+                <YAxis />
+                <Tooltip formatter={(v) => `$${Number(v || 0).toFixed(2)}`} />
+                <Bar dataKey="sales" fill="#10b981" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <EmptyState title="No cashier data" description="Cashier performance appears after orders are posted." />
+          )}
+        </ChartCard>
+        <div className="lg:col-span-1">
           <DataTable
             data={topItems}
             columns={[
@@ -120,11 +132,43 @@ export default function DashboardCharts({
         </div>
       </div>
 
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-2 card p-4">
+          <h3 className="mb-3 text-sm font-semibold">Invoice-wise Sales</h3>
+          <DataTable
+            data={invoiceSeries}
+            columns={[
+              { key: "invoice_no", header: "Invoice", render: (r) => r.invoice_no || "-" },
+              { key: "opened_at", header: "Time", render: (r) => new Date(r.opened_at).toLocaleString() },
+              { key: "order_type", header: "Type", render: (r) => r.order_type || "-" },
+              { key: "status", header: "Status", render: (r) => r.status || "-" },
+              { key: "total", header: "Total", render: (r) => `$${Number(r.total || 0).toFixed(2)}` }
+            ]}
+          />
+        </div>
+        <div className="lg:col-span-1 card p-4">
+          <h3 className="mb-3 text-sm font-semibold">Latest Invoice Totals</h3>
+          {invoiceSeries.length ? (
+            <ResponsiveContainer width="100%" height={240}>
+              <LineChart data={invoiceSeries.slice(0, 12).reverse()}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="invoice_no" />
+                <YAxis />
+                <Tooltip />
+                <Line type="monotone" dataKey="total" stroke="#f59e0b" strokeWidth={3} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <EmptyState title="No invoice data" description="Invoice-level sales appear after orders are opened." />
+          )}
+        </div>
+      </div>
+
       <div className="card p-4">
         <h3 className="mb-3 text-sm font-semibold">Orders Timeline</h3>
         {timeline.length ? (
           <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
-            {timeline.slice(0, 8).map((t) => (
+            {timeline.slice(0, 12).map((t) => (
               <div key={t.hour} className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
                 <p className="muted text-xs">{t.hour}</p>
                 <p className="mt-1 text-sm font-semibold">{t.orders} orders</p>

@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { scryptSync, timingSafeEqual } from "crypto";
 import { Prisma } from "@prisma/client";
 import { TenantContext } from "../auth/types/tenant-context.type";
 import { PrismaService } from "../database/prisma.service";
@@ -16,6 +17,7 @@ import {
   CreateDiningTableDto,
   CreateSectionDto,
   MonitorMoveDto,
+  MoveItemDto,
   RemoveItemDto,
   SplitOrderDto,
   TransferTableDto,
@@ -49,7 +51,7 @@ export class OrdersService {
     const paid = this.sumPaidOrder(order.payments);
     const total = Number(order.total);
     const due = total - paid;
-    if ((due <= 0.0001 && total > 0) || su === "BILLED") return "paid" as const;
+    if ((due <= 0.0001 && total > 0) || su === "BILLED" || su === "PAID") return "paid" as const;
     if (su === "READY" || su === "SERVED") return "ready" as const;
     if (su === "SENT_TO_KITCHEN" || su === "PREPARING") return "preparing" as const;
     return "open" as const;
@@ -77,7 +79,7 @@ export class OrdersService {
         OR: [
           {
             status: {
-              in: ["OPEN", "draft", "SENT_TO_KITCHEN", "PREPARING", "READY", "SERVED", "BILLED"]
+              in: ["DRAFT", "OPEN", "SENT_TO_KITCHEN", "PREPARING", "READY", "SERVED", "PAID", "BILLED"]
             }
           },
           { status: { in: ["closed", "CLOSED"] }, updatedAt: { gte: closedSince } }
@@ -197,7 +199,7 @@ export class OrdersService {
         }
         await this.prisma.order.update({
           where: { id: order.id },
-          data: { status: "BILLED" }
+        data: { status: "PAID" }
         });
         break;
       default:
@@ -261,7 +263,7 @@ export class OrdersService {
         openedBy: ctx.sub,
         openedAt: new Date(),
         channel: orderType.toLowerCase(),
-        status: "OPEN",
+        status: "DRAFT",
         subtotal: 0,
         tax: 0,
         service: 0,
@@ -279,7 +281,7 @@ export class OrdersService {
         conceptId: dto.concept_id,
         branchId: dto.branch_id,
         channel: dto.channel,
-        status: "draft",
+        status: "DRAFT",
         subtotal: 0,
         tax: 0,
         service: 0,
@@ -327,7 +329,7 @@ export class OrdersService {
 
   async addPosItem(ctx: TenantContext, dto: AddItemPosDto) {
     const order = await this.getForTenant(dto.order_id, ctx);
-    if (order.status === "VOIDED" || order.status === "CLOSED") {
+    if (["VOIDED", "CLOSED", "closed", "PAID", "BILLED"].includes(order.status)) {
       throw new NotFoundException("Order is not editable");
     }
     const menuItem = await this.prisma.menuItem.findFirst({
@@ -363,8 +365,9 @@ export class OrdersService {
         nameSnapshot: menuItem.name,
         price: snapPrice,
         qty: dto.qty,
+        seatNo: dto.seat_no,
         notes: dto.notes,
-        status: "OPEN",
+        status: "DRAFT",
         unitPrice: snapPrice,
         lineTotal: Number((snapPrice * dto.qty).toFixed(2)),
         kitchenStatus: "OPEN"
@@ -384,6 +387,10 @@ export class OrdersService {
       }
     });
     if (!item) throw new NotFoundException("Order item not found");
+    const order = await this.getForTenant(item.orderId, ctx);
+    if (["VOIDED", "CLOSED", "closed", "PAID", "BILLED"].includes(order.status)) {
+      throw new BadRequestException("Order is not editable");
+    }
     if (dto.qty <= 0) {
       await this.prisma.orderItem.delete({ where: { id: dto.order_item_id } });
       await this.recalculateTotals(item.orderId);
@@ -411,9 +418,44 @@ export class OrdersService {
       }
     });
     if (!item) throw new NotFoundException("Order item not found");
+    const order = await this.getForTenant(item.orderId, ctx);
+    if (["VOIDED", "CLOSED", "closed", "PAID", "BILLED"].includes(order.status)) {
+      throw new BadRequestException("Order is not editable");
+    }
     await this.prisma.orderItem.delete({ where: { id: dto.order_item_id } });
     await this.recalculateTotals(item.orderId);
     return this.getForTenant(item.orderId, ctx);
+  }
+
+  async moveItem(ctx: TenantContext, dto: MoveItemDto) {
+    const item = await this.prisma.orderItem.findFirst({
+      where: {
+        id: dto.order_item_id,
+        tenantId: ctx.tenant_id,
+        conceptId: ctx.concept_id,
+        branchId: ctx.branch_id
+      }
+    });
+    if (!item) throw new NotFoundException("Order item not found");
+    const source = await this.getForTenant(item.orderId, ctx);
+    const target = await this.getForTenant(dto.target_order_id, ctx);
+    if (source.id === target.id) throw new BadRequestException("Source and target orders must differ");
+    if (["VOIDED", "CLOSED", "closed", "PAID", "BILLED"].includes(source.status)) {
+      throw new BadRequestException("Source order is not editable");
+    }
+    if (["VOIDED", "CLOSED", "closed", "PAID", "BILLED"].includes(target.status)) {
+      throw new BadRequestException("Target order is not editable");
+    }
+    await this.prisma.orderItem.update({
+      where: { id: item.id },
+      data: { orderId: target.id }
+    });
+    await this.recalculateTotals(source.id);
+    await this.recalculateTotals(target.id);
+    return {
+      source: await this.getForTenant(source.id, ctx),
+      target: await this.getForTenant(target.id, ctx)
+    };
   }
 
   async addModifier(ctx: TenantContext, dto: AddModifierDto) {
@@ -426,6 +468,10 @@ export class OrdersService {
       }
     });
     if (!item) throw new NotFoundException("Order item not found");
+    const order = await this.getForTenant(item.orderId, ctx);
+    if (["VOIDED", "CLOSED", "closed", "PAID", "BILLED"].includes(order.status)) {
+      throw new BadRequestException("Order is not editable");
+    }
     const option = await this.prisma.modifierOption.findUnique({
       where: { id: dto.modifier_option_id }
     });
@@ -452,6 +498,9 @@ export class OrdersService {
 
   async addOrderNote(ctx: TenantContext, dto: AddOrderNoteDto) {
     const order = await this.getForTenant(dto.order_id, ctx);
+    if (["VOIDED", "CLOSED", "closed", "PAID", "BILLED"].includes(order.status)) {
+      throw new BadRequestException("Order is not editable");
+    }
     await this.prisma.order.update({
       where: { id: order.id },
       data: { notes: dto.note }
@@ -461,20 +510,112 @@ export class OrdersService {
 
   async applyDiscount(ctx: TenantContext, dto: ApplyDiscountDto) {
     const order = await this.getForTenant(dto.order_id, ctx);
+    if (["VOIDED", "CLOSED", "closed", "PAID", "BILLED"].includes(order.status)) {
+      throw new BadRequestException("Cannot discount a finalized order");
+    }
+    const scope = dto.scope ?? "order";
+    let base = Number(order.subtotal);
+    if (scope === "item") {
+      const targetItem = await this.prisma.orderItem.findFirst({
+        where: {
+          id: dto.order_item_id,
+          orderId: order.id,
+          tenantId: ctx.tenant_id,
+          conceptId: ctx.concept_id,
+          branchId: ctx.branch_id,
+          status: { not: "VOIDED" }
+        }
+      });
+      if (!targetItem) throw new BadRequestException("order_item_id is required for item discount");
+      base = Number(targetItem.lineTotal);
+    }
+    if (base <= 0) throw new BadRequestException("Discount base amount must be greater than zero");
+    if (dto.value <= 0) throw new BadRequestException("Discount value must be greater than zero");
+    const autoLimit = Number((base * 0.1).toFixed(2));
+    const requested = dto.type === "percent" ? Number((base * (dto.value / 100)).toFixed(2)) : Number(dto.value);
+    if (requested > autoLimit) {
+      await this.ensureManagerApproval(ctx, dto.manager_email, dto.manager_password, dto.manager_pin);
+    }
     await this.prisma.orderDiscount.create({
       data: {
         orderId: dto.order_id,
-        type: dto.type,
-        value: dto.value,
-        reason: dto.reason
+        type: "fixed",
+        value: requested,
+        reason: scope === "item"
+          ? `scope:item:${dto.order_item_id}${dto.reason ? ` | ${dto.reason}` : ""}`
+          : (dto.reason || "order discount")
       }
     });
     await this.recalculateTotals(order.id);
     return this.getForTenant(order.id, ctx);
   }
 
+  private async ensureManagerApproval(
+    ctx: TenantContext,
+    managerEmail?: string,
+    managerPassword?: string,
+    managerPin?: string
+  ) {
+    const hasPasswordPath = !!(managerEmail && managerPassword);
+    const hasPinPath = !!managerPin;
+    if (!hasPasswordPath && !hasPinPath) {
+      throw new ForbiddenException("Manager approval required (email/password or manager PIN)");
+    }
+    if (hasPasswordPath && managerEmail && managerPassword) {
+      const normalizedEmail = managerEmail.trim().toLowerCase();
+      const user = await this.prisma.user.findFirst({
+        where: { tenantId: ctx.tenant_id, email: normalizedEmail },
+        include: {
+          roleAssignments: {
+            include: { role: true }
+          }
+        }
+      });
+      if (!user) throw new ForbiddenException("Manager approval denied");
+      if (!user.passwordHash) throw new ForbiddenException("Manager approval denied");
+      const ok = this.verifySecret(managerPassword, user.passwordHash);
+      if (!ok) throw new ForbiddenException("Manager approval denied");
+      const roleCodes = user.roleAssignments
+        .filter((x) => !x.branchId || x.branchId === ctx.branch_id)
+        .map((x) => x.role.code);
+      const isManager = roleCodes.some((r) =>
+        ["tenant_owner", "admin", "super_admin", "manager", "supervisor"].includes(r)
+      );
+      if (!isManager) throw new ForbiddenException("Manager role required for approval");
+      return;
+    }
+
+    const users = await this.prisma.user.findMany({
+      where: { tenantId: ctx.tenant_id },
+      include: { roleAssignments: { include: { role: true } } }
+    });
+    const managers = users.filter((u) => {
+      const roleCodes = u.roleAssignments
+        .filter((x) => !x.branchId || x.branchId === ctx.branch_id)
+        .map((x) => x.role.code);
+      return roleCodes.some((r) =>
+        ["tenant_owner", "admin", "super_admin", "manager", "supervisor"].includes(r)
+      );
+    });
+    const ok = managers.some((u) => !!u.passwordHash && this.verifySecret(managerPin!, u.passwordHash));
+    if (!ok) throw new ForbiddenException("Manager PIN invalid");
+  }
+
+  private verifySecret(secret: string, storedHash: string) {
+    const parts = storedHash.split(":");
+    if (parts.length !== 2) return false;
+    const [salt, key] = parts;
+    if (!salt || !key) return false;
+    const hashBuffer = scryptSync(secret, salt, 64);
+    const keyBuffer = Buffer.from(key, "hex");
+    return hashBuffer.length === keyBuffer.length && timingSafeEqual(hashBuffer, keyBuffer);
+  }
+
   async applyPromotion(ctx: TenantContext, dto: ApplyPromotionDto) {
     const order = await this.getForTenant(dto.order_id, ctx);
+    if (["VOIDED", "CLOSED", "closed", "PAID", "BILLED"].includes(order.status)) {
+      throw new BadRequestException("Cannot apply promotion to a finalized order");
+    }
     const now = new Date();
     const promo = await this.prisma.promotion.findFirst({
       where: {
@@ -554,15 +695,27 @@ export class OrdersService {
 
   async sendKitchen(orderId: string, ctx: TenantContext) {
     const existing = await this.getForTenant(orderId, ctx);
+    if (["VOIDED", "CLOSED", "closed", "PAID", "BILLED"].includes(existing.status)) {
+      throw new BadRequestException("Finalized order cannot be sent to kitchen");
+    }
+    const pendingItems = existing.items.filter(
+      (it) => it.status !== "VOIDED" && String(it.kitchenStatus).toUpperCase() === "OPEN"
+    );
+    if (pendingItems.length == 0) {
+      throw new BadRequestException("No new items to send to kitchen");
+    }
     const order = await this.prisma.order.update({
       where: { id: existing.id },
       data: { status: "SENT_TO_KITCHEN" }
     });
     await this.prisma.orderItem.updateMany({
-      where: { orderId: order.id, status: { not: "VOIDED" } },
+      where: { id: { in: pendingItems.map((x) => x.id) }, status: { not: "VOIDED" } },
       data: { status: "SENT_TO_KITCHEN", kitchenStatus: "SENT_TO_KITCHEN" }
     });
-    await this.kdsService.createTicket(ctx, { order_id: order.id });
+    await this.kdsService.createTicket(ctx, {
+      order_id: order.id,
+      order_item_ids: pendingItems.map((x) => x.id)
+    });
     return this.get(orderId);
   }
 
@@ -599,7 +752,7 @@ export class OrdersService {
         openedBy: ctx.sub,
         openedAt: new Date(),
         channel: source.channel,
-        status: "OPEN",
+        status: "DRAFT",
         subtotal: 0,
         tax: 0,
         service: 0,
@@ -659,7 +812,7 @@ export class OrdersService {
         tenantId: ctx.tenant_id,
         conceptId: ctx.concept_id,
         branchId: ctx.branch_id,
-        status: { in: ["OPEN", "SENT_TO_KITCHEN", "PREPARING", "READY", "SERVED", "BILLED"] }
+        status: { in: ["DRAFT", "OPEN", "SENT_TO_KITCHEN", "PREPARING", "READY", "SERVED", "PAID", "BILLED"] }
       },
       include: { items: true },
       orderBy: { createdAt: "desc" }
@@ -678,8 +831,14 @@ export class OrdersService {
     await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.order.update({
         where: { id: orderId },
-        data: { status: "closed" }
+        data: { status: "CLOSED" }
       });
+      if (order.tableSessionId) {
+        await tx.tableSession.updateMany({
+          where: { id: order.tableSessionId, closedAt: null },
+          data: { status: "CLOSED", closedAt: new Date() }
+        });
+      }
 
       await this.inventoryService.consumeForOrder(
         {
@@ -922,7 +1081,7 @@ export class OrdersService {
       where: { branchId, tableId: { in: tableIds }, closedAt: null, status: "OPEN" },
       include: {
         orders: {
-          where: { status: { in: ["OPEN", "SENT_TO_KITCHEN", "PREPARING", "READY", "SERVED", "BILLED"] } },
+          where: { status: { in: ["DRAFT", "OPEN", "SENT_TO_KITCHEN", "PREPARING", "READY", "SERVED", "PAID", "BILLED"] } },
           orderBy: { openedAt: "desc" },
           select: { id: true, status: true, orderNumber: true, openedAt: true, guestCount: true }
         }

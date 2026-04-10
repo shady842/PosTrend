@@ -38,6 +38,9 @@ export default function DashboardPage() {
   const [categorySeries, setCategorySeries] = useState<DashboardChartsProps["categorySeries"]>([]);
   const [topItems, setTopItems] = useState<DashboardChartsProps["topItems"]>([]);
   const [timeline, setTimeline] = useState<DashboardChartsProps["timeline"]>([]);
+  const [cashierSeries, setCashierSeries] = useState<DashboardChartsProps["cashierSeries"]>([]);
+  const [paymentMethodSeries, setPaymentMethodSeries] = useState<DashboardChartsProps["paymentMethodSeries"]>([]);
+  const [invoiceSeries, setInvoiceSeries] = useState<DashboardChartsProps["invoiceSeries"]>([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [liveOps, setLiveOps] = useState({
     active_orders: 0,
@@ -56,10 +59,14 @@ export default function DashboardPage() {
           branchId && branchId.length > 0
             ? `?branch_id=${encodeURIComponent(branchId)}`
             : "";
-        const [branchRows, salesResp, itemsResp, liveResp] = await Promise.all([
+        const [branchRows, salesResp, hourlyResp, invoiceResp, itemsResp, cashierResp, paymentResp, liveResp] = await Promise.all([
           apiGet("/branches"),
           apiGet(`/reports/sales?page=1&page_size=300${branchId ? `&branch_id=${branchId}` : ""}`),
+          apiGet(`/reports/hourly-sales?page=1&page_size=24${branchId ? `&branch_id=${branchId}` : ""}`),
+          apiGet(`/reports/invoice-sales?page=1&page_size=50${branchId ? `&branch_id=${branchId}` : ""}`),
           apiGet(`/reports/items?page=1&page_size=50${branchId ? `&branch_id=${branchId}` : ""}`),
+          apiGet(`/reports/cashier?page=1&page_size=20${branchId ? `&branch_id=${branchId}` : ""}`),
+          apiGet(`/reports/payment-methods?page=1&page_size=20${branchId ? `&branch_id=${branchId}` : ""}`),
           apiGet(`/reports/live${liveQ}`).catch(() => null)
         ]);
       const branchData = Array.isArray(branchRows) ? branchRows : [];
@@ -75,6 +82,16 @@ export default function DashboardPage() {
         qty: number;
         revenue: number;
       }>;
+      const hourlyRows = (hourlyResp?.data || []) as Array<{ hour: string; invoices: number; sales: number }>;
+      const invoiceRows = (invoiceResp?.data || []) as Array<{
+        invoice_no: string;
+        opened_at: string;
+        order_type: string;
+        status: string;
+        total: number;
+      }>;
+      const cashierRows = (cashierResp?.data || []) as Array<{ user_id: string; orders: number; sales: number }>;
+      const paymentRows = (paymentResp?.data || []) as Array<{ method: string; count: number; amount: number }>;
 
       const today = new Date().toISOString().slice(0, 10);
       const todayRows = salesRows.filter((r) => r.date === today);
@@ -102,6 +119,7 @@ export default function DashboardPage() {
         groupedByDate.set(row.date, (groupedByDate.get(row.date) || 0) + Number(row.net_sales || 0));
       }
       const line = [...groupedByDate.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0]))
         .map(([date, value]) => ({ date: date.slice(5), value }))
         .slice(-12);
       setSalesSeries(line);
@@ -111,15 +129,49 @@ export default function DashboardPage() {
         .map((r) => ({ name: r.item_name, value: Number(r.revenue || 0) }));
       setCategorySeries(category);
       setTopItems(itemsRows.slice(0, 8));
+      setCashierSeries(
+        cashierRows
+          .sort((a, b) => Number(b.sales || 0) - Number(a.sales || 0))
+          .slice(0, 8)
+          .map((r) => ({
+            user: r.user_id === "unknown" ? "Unknown" : String(r.user_id).slice(0, 8),
+            orders: Number(r.orders || 0),
+            sales: Number(r.sales || 0)
+          }))
+      );
+      setPaymentMethodSeries(
+        paymentRows.map((r) => ({
+          method: String(r.method || "unknown").toUpperCase(),
+          count: Number(r.count || 0),
+          amount: Number(r.amount || 0)
+        }))
+      );
+      setInvoiceSeries(
+        invoiceRows.map((r) => ({
+          invoice_no: r.invoice_no || "-",
+          opened_at: String(r.opened_at || ""),
+          order_type: r.order_type || "-",
+          status: r.status || "-",
+          total: Number(r.total || 0)
+        }))
+      );
 
-      const hours = Array.from({ length: 12 }, (_, i) => `${String(i + 9).padStart(2, "0")}:00`);
-      const timelineRows = hours.map((h, i) => ({
-        hour: h,
-        orders: Math.max(1, Math.round((ordersCount || 20) * (0.04 + (i % 4) * 0.02))),
-        sales: Math.max(20, Math.round((salesToday || 800) * (0.03 + (i % 5) * 0.015)))
-      }));
+      const timelineRows = line.map((r) => {
+        const dayRows = salesRows.filter((x) => x.date.slice(5) === r.date);
+        return {
+          hour: r.date,
+          orders: dayRows.reduce((sum, x) => sum + Number(x.orders || 0), 0),
+          sales: Number(r.value || 0)
+        };
+      });
       setTimeline(timelineRows);
-      setHourlySeries(timelineRows.map((r) => ({ hour: r.hour.slice(0, 2), orders: r.orders })));
+      setHourlySeries(
+        hourlyRows.map((r) => ({
+          hour: r.hour,
+          invoices: Number(r.invoices || 0),
+          sales: Number(r.sales || 0)
+        }))
+      );
     } catch (e) {
       if (!quiet) {
         const msg =
@@ -135,11 +187,19 @@ export default function DashboardPage() {
       setHourlySeries([]);
       setTopItems([]);
       setTimeline([]);
+      setCashierSeries([]);
+      setPaymentMethodSeries([]);
+      setInvoiceSeries([]);
       setStats({
         salesToday: 0,
         ordersCount: 0,
         avgOrderValue: 0,
         topItemsCount: 0
+      });
+      setLiveOps({
+        active_orders: 0,
+        kds_tickets: 0,
+        occupied_tables: 0
       });
     } finally {
       setDataLoading(false);
@@ -153,6 +213,11 @@ export default function DashboardPage() {
   });
 
   useEffect(() => {
+    const remembered = localStorage.getItem("pt_branch_id") || "";
+    if (!selectedBranch && remembered) {
+      setSelectedBranch(remembered);
+      return;
+    }
     void loadDashboard(selectedBranch || undefined);
   }, [selectedBranch, loadDashboard]);
 
@@ -161,11 +226,13 @@ export default function DashboardPage() {
       salesSeries,
       categorySeries,
       hourlySeries,
+      cashierSeries,
+      paymentMethodSeries,
       topItems,
       timeline,
-      onQuickAction: (label: string) => notify(`${label} clicked`)
+      invoiceSeries
     }),
-    [salesSeries, categorySeries, hourlySeries, topItems, timeline, notify]
+    [salesSeries, categorySeries, hourlySeries, cashierSeries, paymentMethodSeries, topItems, timeline, invoiceSeries]
   );
 
   return (

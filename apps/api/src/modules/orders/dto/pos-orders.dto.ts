@@ -72,6 +72,11 @@ export class AddItemPosDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  seat_no?: number;
 }
 
 export class UpdateQtyDto {
@@ -86,6 +91,14 @@ export class UpdateQtyDto {
 export class RemoveItemDto {
   @IsString()
   order_item_id!: string;
+}
+
+export class MoveItemDto {
+  @IsString()
+  order_item_id!: string;
+
+  @IsString()
+  target_order_id!: string;
 }
 
 export class AddModifierDto {
@@ -113,6 +126,26 @@ export class ApplyDiscountDto {
 
   @IsNumber()
   value!: number;
+
+  @IsOptional()
+  @IsIn(["order", "item"])
+  scope?: "order" | "item";
+
+  @IsOptional()
+  @IsString()
+  order_item_id?: string;
+
+  @IsOptional()
+  @IsString()
+  manager_email?: string;
+
+  @IsOptional()
+  @IsString()
+  manager_password?: string;
+
+  @IsOptional()
+  @IsString()
+  manager_pin?: string;
 
   @IsOptional()
   @IsString()

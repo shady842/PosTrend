@@ -49,7 +49,12 @@ class KdsTicket {
         final qty = (m['qty'] is num)
             ? (m['qty'] as num).toDouble()
             : double.tryParse(m['qty']?.toString() ?? '') ?? 1;
-        items.add(KdsItemLine(name: name, qty: qty));
+        final seatNo = _seatNoFromAny(
+          m['seatNo'],
+          m['seat_no'],
+          m['notes']?.toString(),
+        );
+        items.add(KdsItemLine(name: name, qty: qty, seatNo: seatNo));
       }
     }
 
@@ -62,12 +67,28 @@ class KdsTicket {
       items: items,
     );
   }
+
+  static int? _seatNoFromAny(dynamic seatNo, dynamic seatNoSnake, String? notes) {
+    final direct = (seatNo is num)
+        ? seatNo.toInt()
+        : int.tryParse(seatNo?.toString() ?? '');
+    if (direct != null && direct > 0) return direct;
+    final snake = (seatNoSnake is num)
+        ? seatNoSnake.toInt()
+        : int.tryParse(seatNoSnake?.toString() ?? '');
+    if (snake != null && snake > 0) return snake;
+    if (notes == null || notes.isEmpty) return null;
+    final m = RegExp(r'seat\s*[:#-]?\s*(\d+)', caseSensitive: false).firstMatch(notes);
+    final parsed = int.tryParse(m?.group(1) ?? '');
+    return (parsed != null && parsed > 0) ? parsed : null;
+  }
 }
 
 class KdsItemLine {
-  KdsItemLine({required this.name, required this.qty});
+  KdsItemLine({required this.name, required this.qty, this.seatNo});
   final String name;
   final double qty;
+  final int? seatNo;
 }
 
 class KdsService {

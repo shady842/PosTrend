@@ -341,12 +341,13 @@ class _KdsScreenState extends State<KdsScreen> {
         badgeColor = Colors.grey;
     }
 
-    final grouped = <String, double>{};
+    final seatBuckets = <int, Map<String, double>>{};
     for (final it in t.items) {
-      grouped[it.name] = (grouped[it.name] ?? 0) + it.qty;
+      final seat = it.seatNo ?? 0;
+      final byName = seatBuckets.putIfAbsent(seat, () => <String, double>{});
+      byName[it.name] = (byName[it.name] ?? 0) + it.qty;
     }
-    final lines = grouped.entries.toList()
-      ..sort((a, b) => a.key.compareTo(b.key));
+    final seatKeys = seatBuckets.keys.toList()..sort();
 
     return Card(
       elevation: 2,
@@ -396,35 +397,55 @@ class _KdsScreenState extends State<KdsScreen> {
             Expanded(
               child: ListView(
                 children: [
-                  for (final e in lines)
+                  for (final seat in seatKeys) ...[
                     Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Row(
-                        children: [
-                          SizedBox(
-                            width: 58,
-                            child: Text(
-                              _fmtQty(e.value),
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            child: Text(
-                              e.key,
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
+                      padding: const EdgeInsets.only(top: 2, bottom: 6),
+                      child: Text(
+                        seat <= 0 ? 'Seat: Unassigned' : 'Seat: $seat',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
                     ),
+                    ...(() {
+                      final lines = (seatBuckets[seat] ?? const <String, double>{}).entries.toList()
+                        ..sort((a, b) => a.key.compareTo(b.key));
+                      return lines
+                          .map(
+                            (e) => Padding(
+                              padding: const EdgeInsets.only(bottom: 6),
+                              child: Row(
+                                children: [
+                                  SizedBox(
+                                    width: 58,
+                                    child: Text(
+                                      _fmtQty(e.value),
+                                      style: const TextStyle(
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Text(
+                                      e.key,
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                          .toList();
+                    })(),
+                    const Divider(height: 14),
+                  ],
                 ],
               ),
             ),

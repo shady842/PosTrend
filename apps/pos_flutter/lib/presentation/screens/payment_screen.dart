@@ -394,8 +394,18 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   Future<void> _applyDiscountDialog() async {
     final type = ValueNotifier<String>('percent');
+    final scope = ValueNotifier<String>('order');
     final valueCtrl = TextEditingController();
     final reasonCtrl = TextEditingController();
+    final managerEmailCtrl = TextEditingController();
+    final managerPasswordCtrl = TextEditingController();
+    final managerPinCtrl = TextEditingController();
+    String? selectedItemId;
+    final items = ((_orderJson?['items'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((x) => Map<String, dynamic>.from(x))
+        .where((m) => (m['status']?.toString().toUpperCase() ?? '') != 'VOIDED')
+        .toList();
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -419,6 +429,47 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 ),
               ),
               const SizedBox(height: 10),
+              ValueListenableBuilder<String>(
+                valueListenable: scope,
+                builder: (_, v, __) => SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment<String>(value: 'order', label: Text('Order')),
+                    ButtonSegment<String>(value: 'item', label: Text('Item')),
+                  ],
+                  selected: {v},
+                  onSelectionChanged: (s) {
+                    if (s.isNotEmpty) scope.value = s.first;
+                  },
+                ),
+              ),
+              const SizedBox(height: 10),
+              if (items.isNotEmpty)
+                ValueListenableBuilder<String>(
+                  valueListenable: scope,
+                  builder: (_, v, __) {
+                    if (v != 'item') return const SizedBox.shrink();
+                    return DropdownButtonFormField<String>(
+                      initialValue: selectedItemId,
+                      decoration: const InputDecoration(
+                        labelText: 'Target item',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: items
+                          .map(
+                            (m) => DropdownMenuItem<String>(
+                              value: (m['id'] ?? '').toString(),
+                              child: Text(
+                                '${(m['nameSnapshot'] ?? 'Item').toString()} x${m['qty']}',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v2) => selectedItemId = v2,
+                    );
+                  },
+                ),
+              const SizedBox(height: 10),
               TextField(
                 controller: valueCtrl,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -432,6 +483,32 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 controller: reasonCtrl,
                 decoration: const InputDecoration(
                   labelText: 'Reason (optional)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: managerPinCtrl,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Manager PIN (quick approval)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: managerEmailCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Manager email (optional fallback)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: managerPasswordCtrl,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Manager password (optional fallback)',
                   border: OutlineInputBorder(),
                 ),
               ),
@@ -456,17 +533,26 @@ class _PaymentScreenState extends State<PaymentScreen> {
       _snack('Enter a valid discount value');
       return;
     }
+    if (scope.value == 'item' && (selectedItemId == null || selectedItemId!.isEmpty)) {
+      _snack('Select an item for item discount');
+      return;
+    }
     setState(() => _busy = true);
-    final applied = await _payments.applyDiscount(
+    final (applied, msg) = await _payments.applyDiscount(
       orderId: widget.orderId,
       type: type.value,
       value: value,
+      scope: scope.value,
+      orderItemId: selectedItemId,
+      managerEmail: managerEmailCtrl.text.trim(),
+      managerPassword: managerPasswordCtrl.text,
+      managerPin: managerPinCtrl.text,
       reason: reasonCtrl.text.trim(),
     );
     if (!mounted) return;
     setState(() => _busy = false);
     await _reload();
-    _snack(applied ? 'Discount applied' : 'Discount failed');
+    _snack(applied ? 'Discount applied' : (msg ?? 'Discount failed'));
   }
 
   Future<void> _applyPromotionDialog() async {
@@ -548,17 +634,27 @@ class _PaymentScreenState extends State<PaymentScreen> {
       lines.add('Order: $id');
       final items = order['items'];
       if (items is List) {
+        final seatGroups = <int, List<Map<String, dynamic>>>{};
         for (final raw in items) {
           if (raw is! Map) continue;
           final m = Map<String, dynamic>.from(raw);
-          final name = (m['nameSnapshot'] as String?) ??
-              (m['menuItem'] is Map
-                  ? (m['menuItem'] as Map)['name'] as String?
-                  : null) ??
-              'Item';
-          final qty = m['qty'];
-          final lineTotal = m['lineTotal'];
-          lines.add('  $name × $qty  ${_lineMoney(lineTotal)}');
+          final seat = _seatNoFromItem(m) ?? 0;
+          seatGroups.putIfAbsent(seat, () => <Map<String, dynamic>>[]).add(m);
+        }
+        final seatKeys = seatGroups.keys.toList()..sort();
+        for (final seat in seatKeys) {
+          lines.add(seat <= 0 ? 'Seat: Unassigned' : 'Seat: $seat');
+          final seatItems = seatGroups[seat] ?? const <Map<String, dynamic>>[];
+          for (final m in seatItems) {
+            final name = (m['nameSnapshot'] as String?) ??
+                (m['menuItem'] is Map
+                    ? (m['menuItem'] as Map)['name'] as String?
+                    : null) ??
+                'Item';
+            final qty = m['qty'];
+            final lineTotal = m['lineTotal'];
+            lines.add('  $name × $qty  ${_lineMoney(lineTotal)}');
+          }
         }
       }
       lines.add('Subtotal (server): ${_lineMoney(order['subtotal'])}');
@@ -604,6 +700,22 @@ class _PaymentScreenState extends State<PaymentScreen> {
     if (v == null) return _fmtMoney(0);
     if (v is num) return _fmtMoney(v.toDouble());
     return _fmtMoney(double.tryParse(v.toString()) ?? 0);
+  }
+
+  static int? _seatNoFromItem(Map<String, dynamic> item) {
+    final direct = (item['seatNo'] is num)
+        ? (item['seatNo'] as num).toInt()
+        : int.tryParse(item['seatNo']?.toString() ?? '');
+    if (direct != null && direct > 0) return direct;
+    final snake = (item['seat_no'] is num)
+        ? (item['seat_no'] as num).toInt()
+        : int.tryParse(item['seat_no']?.toString() ?? '');
+    if (snake != null && snake > 0) return snake;
+    final notes = item['notes']?.toString() ?? '';
+    if (notes.isEmpty) return null;
+    final m = RegExp(r'seat\s*[:#-]?\s*(\d+)', caseSensitive: false).firstMatch(notes);
+    final parsed = int.tryParse(m?.group(1) ?? '');
+    return (parsed != null && parsed > 0) ? parsed : null;
   }
 
   void _setMode(_PayMode m) {

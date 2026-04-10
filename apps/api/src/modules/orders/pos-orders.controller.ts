@@ -14,6 +14,7 @@ import {
   OpenTableOrderDto,
   OpenTakeawayOrderDto,
   MonitorMoveDto,
+  MoveItemDto,
   RemoveItemDto,
   SendKitchenDto,
   SplitOrderDto,
@@ -65,6 +66,12 @@ export class PosOrdersController {
   @Permissions("pos.orders.edit")
   removeItem(@CurrentTenant() ctx: TenantContext, @Body() dto: RemoveItemDto) {
     return this.ordersService.removeItem(ctx, dto);
+  }
+
+  @Post("move-item")
+  @Permissions("pos.orders.edit")
+  moveItem(@CurrentTenant() ctx: TenantContext, @Body() dto: MoveItemDto) {
+    return this.ordersService.moveItem(ctx, dto);
   }
 
   @Post("add-modifier")

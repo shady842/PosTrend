@@ -10,7 +10,14 @@ export class ReportsService {
 
   async sales(ctx: TenantContext, q: ReportFilterDto) {
     await this.audit(ctx, "sales", q);
-    const where = this.orderWhere(ctx, q);
+    const branchId = await this.resolveBranchScope(ctx, q.branch_id);
+    const where = {
+      tenantId: ctx.tenant_id,
+      conceptId: this.enforceScope(q.concept_id, ctx.concept_id, "concept_id"),
+      branchId,
+      createdAt: this.dateRange(q.date_from, q.date_to),
+      status: { notIn: ["VOIDED", "voided"] }
+    };
     const orders = await this.prisma.order.findMany({ where, orderBy: { createdAt: "desc" } });
     const rows = orders.map((o) => ({
       date: o.createdAt.toISOString().slice(0, 10),
@@ -23,9 +30,78 @@ export class ReportsService {
     return this.paginatedOrExport(rows, q, "reports_sales");
   }
 
+  async hourlySales(ctx: TenantContext, q: ReportFilterDto) {
+    await this.audit(ctx, "hourly_sales", q);
+    const branchId = await this.resolveBranchScope(ctx, q.branch_id);
+    const conceptId = this.enforceScope(q.concept_id, ctx.concept_id, "concept_id");
+    const orders = await this.prisma.order.findMany({
+      where: {
+        tenantId: ctx.tenant_id,
+        conceptId,
+        branchId,
+        createdAt: this.dateRange(q.date_from, q.date_to),
+        status: { notIn: ["VOIDED", "voided"] }
+      },
+      select: { createdAt: true, total: true }
+    });
+    const buckets = new Map<string, { hour: string; invoices: number; sales: number }>();
+    for (let i = 0; i < 24; i++) {
+      const h = `${String(i).padStart(2, "0")}:00`;
+      buckets.set(h, { hour: h, invoices: 0, sales: 0 });
+    }
+    for (const o of orders) {
+      const h = `${String(o.createdAt.getHours()).padStart(2, "0")}:00`;
+      const cur = buckets.get(h);
+      if (!cur) continue;
+      cur.invoices += 1;
+      cur.sales += Number(o.total || 0);
+    }
+    return this.paginatedOrExport([...buckets.values()], q, "reports_hourly_sales");
+  }
+
+  async invoiceSales(ctx: TenantContext, q: ReportFilterDto) {
+    await this.audit(ctx, "invoice_sales", q);
+    const branchId = await this.resolveBranchScope(ctx, q.branch_id);
+    const conceptId = this.enforceScope(q.concept_id, ctx.concept_id, "concept_id");
+    const orders = await this.prisma.order.findMany({
+      where: {
+        tenantId: ctx.tenant_id,
+        conceptId,
+        branchId,
+        createdAt: this.dateRange(q.date_from, q.date_to),
+        status: { notIn: ["VOIDED", "voided"] }
+      },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        orderNumber: true,
+        createdAt: true,
+        orderType: true,
+        status: true,
+        total: true
+      }
+    });
+    const rows = orders.map((o) => ({
+      invoice_id: o.id,
+      invoice_no: o.orderNumber || o.id.slice(0, 8),
+      opened_at: o.createdAt,
+      order_type: o.orderType,
+      status: o.status,
+      total: Number(o.total)
+    }));
+    return this.paginatedOrExport(rows, q, "reports_invoice_sales");
+  }
+
   async items(ctx: TenantContext, q: ReportFilterDto) {
     await this.audit(ctx, "items", q);
-    const where = this.orderWhere(ctx, q);
+    const branchId = await this.resolveBranchScope(ctx, q.branch_id);
+    const where = {
+      tenantId: ctx.tenant_id,
+      conceptId: this.enforceScope(q.concept_id, ctx.concept_id, "concept_id"),
+      branchId,
+      createdAt: this.dateRange(q.date_from, q.date_to),
+      status: { notIn: ["VOIDED", "voided"] }
+    };
     const items = await this.prisma.orderItem.findMany({
       where: { order: where },
       include: { menuItem: true }
@@ -56,6 +132,32 @@ export class ReportsService {
       mapped.set(uid, cur);
     }
     return this.paginatedOrExport([...mapped.values()], q, "reports_cashier");
+  }
+
+  async paymentMethods(ctx: TenantContext, q: ReportFilterDto) {
+    await this.audit(ctx, "payment_methods", q);
+    const branchId = await this.resolveBranchScope(ctx, q.branch_id);
+    const conceptId = this.enforceScope(q.concept_id, ctx.concept_id, "concept_id");
+    const payments = await this.prisma.payment.findMany({
+      where: {
+        tenantId: ctx.tenant_id,
+        conceptId,
+        branchId,
+        createdAt: this.dateRange(q.date_from, q.date_to),
+        status: { notIn: ["voided", "VOIDED", "failed", "FAILED"] }
+      },
+      select: { paymentMethod: true, amount: true }
+    });
+    const mapped = new Map<string, { method: string; count: number; amount: number }>();
+    for (const p of payments) {
+      const key = String(p.paymentMethod || "unknown").toLowerCase();
+      const cur = mapped.get(key) || { method: key, count: 0, amount: 0 };
+      cur.count += 1;
+      cur.amount += Number(p.amount || 0);
+      mapped.set(key, cur);
+    }
+    const rows = [...mapped.values()].sort((a, b) => b.amount - a.amount);
+    return this.paginatedOrExport(rows, q, "reports_payment_methods");
   }
 
   async shifts(ctx: TenantContext, q: ReportFilterDto) {
@@ -115,9 +217,7 @@ export class ReportsService {
 
   /** Live operational snapshot for tenant dashboard (no audit — polled frequently). */
   async liveOps(ctx: TenantContext, branchIdParam?: string) {
-    const branchId = branchIdParam
-      ? this.enforceScope(branchIdParam, ctx.branch_id, "branch_id")
-      : ctx.branch_id;
+    const branchId = await this.resolveBranchScope(ctx, branchIdParam);
 
     const activeStatuses = [
       "OPEN",
@@ -201,6 +301,24 @@ export class ReportsService {
   private enforceScope(requested: string | undefined, scoped: string, key: string) {
     if (!requested) return scoped;
     if (requested !== scoped) throw new BadRequestException(`${key} out of scope`);
+    return requested;
+  }
+
+  private async resolveBranchScope(ctx: TenantContext, requested?: string) {
+    if (!requested || requested.length === 0) return ctx.branch_id;
+    if (requested === ctx.branch_id) return requested;
+    if (!["tenant_owner", "admin", "super_admin"].includes(ctx.role)) {
+      throw new BadRequestException("branch_id out of scope");
+    }
+    const branch = await this.prisma.branch.findFirst({
+      where: {
+        id: requested,
+        tenantId: ctx.tenant_id,
+        conceptId: ctx.concept_id
+      },
+      select: { id: true }
+    });
+    if (!branch) throw new BadRequestException("branch_id out of scope");
     return requested;
   }
 

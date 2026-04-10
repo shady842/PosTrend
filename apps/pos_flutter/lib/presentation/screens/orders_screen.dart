@@ -12,11 +12,27 @@ import '../../domain/entities/pos_menu.dart';
 import '../../services/kds_service.dart';
 import '../../services/menu_sync_service.dart';
 import '../../services/offline_sync_engine.dart';
+import '../../services/pos_order_service.dart';
 import '../../services/printing/printer_service.dart';
+import '../../services/tables_layout_service.dart';
 import '../widgets/pos_order_sheets.dart';
+import 'payment_screen.dart';
+
+enum OrdersMode {
+  takeawayDraft,
+  dineInEdit,
+  deliveryEdit,
+}
 
 class OrdersScreen extends StatefulWidget {
-  const OrdersScreen({super.key});
+  const OrdersScreen({
+    super.key,
+    this.orderId,
+    this.mode = OrdersMode.takeawayDraft,
+  });
+
+  final String? orderId;
+  final OrdersMode mode;
 
   @override
   State<OrdersScreen> createState() => _OrdersScreenState();
@@ -24,9 +40,12 @@ class OrdersScreen extends StatefulWidget {
 
 class _OrdersScreenState extends State<OrdersScreen> {
   final _appDb = AppDatabase();
+  final _storage = LocalStorage();
   final _printer = PrinterService(LocalStorage());
   late final PosLocalRepository _repo = PosLocalRepository(_appDb);
   late final MenuSyncService _menuSync = MenuSyncService(LocalStorage(), _appDb);
+  late final PosOrderService _orderService = PosOrderService(LocalStorage());
+  late final TablesLayoutService _tablesLayout = TablesLayoutService(_storage, _appDb);
   final _connectivity = ConnectivityService();
   final _searchCtrl = TextEditingController();
 
@@ -41,6 +60,17 @@ class _OrdersScreenState extends State<OrdersScreen> {
   bool _syncBusy = false;
   String? _menuSyncedAt;
   Timer? _draftDebounce;
+  String? _activeOrderId;
+  String? _activeOrderNumber;
+  String _activeOrderStatus = '';
+  int _apiSubtotal = 0;
+  int _apiTax = 0;
+  int _apiService = 0;
+  int _apiTotal = 0;
+  int _activeSeat = 1;
+  Map<String, int?> _itemSeatById = {};
+
+  bool get _isEditMode => widget.mode != OrdersMode.takeawayDraft;
 
   @override
   void initState() {
@@ -60,7 +90,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
   Future<void> _bootstrap() async {
     await _menuSync.syncIfPossible();
     final cats = await _repo.loadCategories();
-    final draft = await _repo.loadDraft();
+    final draft = _isEditMode ? <CartLine>[] : await _repo.loadDraft();
     final pending = await _repo.countPendingOrders();
     final diag = await SyncOutboxRepository(_appDb).diagnostics();
     final syncAt = await _repo.getMenuMeta('last_menu_sync_at');
@@ -74,7 +104,54 @@ class _OrdersScreenState extends State<OrdersScreen> {
       _menuSyncedAt = syncAt;
       _loading = false;
     });
+    if (_isEditMode && widget.orderId != null && widget.orderId!.isNotEmpty) {
+      await _loadExistingOrder(widget.orderId!);
+    }
     await _reloadItems();
+  }
+
+  void _applyApiSnapshot(PosOrderSnapshot snap) {
+    _activeOrderId = snap.id;
+    _activeOrderNumber = snap.orderNumber;
+    _activeOrderStatus = snap.status;
+    _apiSubtotal = snap.subtotal;
+    _apiTax = snap.tax;
+    _apiService = snap.service;
+    _apiTotal = snap.total;
+    _itemSeatById = {for (final it in snap.items) it.id: it.seatNo};
+    _lines = snap.items
+        .where((x) => x.status.toUpperCase() != 'VOIDED')
+        .map(
+          (x) => CartLine(
+            lineId: x.id,
+            itemId: x.id,
+            name: x.name,
+            unitPriceCents: x.qty <= 0 ? 0 : (x.lineTotal ~/ x.qty),
+            qty: x.qty,
+            modifiers: const [],
+            notes: x.notes,
+            seatNo: x.seatNo,
+          ),
+        )
+        .toList();
+  }
+
+  int? _seatFromNotes(String notes) {
+    final m = RegExp(r'seat\s*[:#-]?\s*(\d+)', caseSensitive: false).firstMatch(notes);
+    if (m == null) return null;
+    return int.tryParse(m.group(1) ?? '');
+  }
+
+  int? _seatForLine(CartLine line) {
+    return _itemSeatById[line.lineId] ?? _seatFromNotes(line.notes);
+  }
+
+  Future<void> _loadExistingOrder(String orderId) async {
+    final snap = await _orderService.getOrder(orderId);
+    if (!mounted) return;
+    setState(() {
+      _applyApiSnapshot(snap);
+    });
   }
 
   Future<void> _reloadCatalog() async {
@@ -121,6 +198,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
   }
 
   void _scheduleDraftSave() {
+    if (_isEditMode) return;
     _draftDebounce?.cancel();
     _draftDebounce = Timer(const Duration(milliseconds: 350), () {
       _repo.saveDraft(_lines);
@@ -179,6 +257,38 @@ class _OrdersScreenState extends State<OrdersScreen> {
       if (picked == null) return;
       chosen = picked;
     }
+    if (_isEditMode) {
+      final orderId = _activeOrderId ?? widget.orderId;
+      if (orderId == null || orderId.isEmpty) return;
+      try {
+        var snap = await _orderService.addItem(
+          orderId: orderId,
+          menuItemId: item.id,
+          qty: 1,
+          variantId: variantId,
+          notes: 'Seat $_activeSeat',
+          seatNo: _activeSeat,
+        );
+        if (chosen.isNotEmpty) {
+          final fresh = snap.items.where((x) => x.status.toUpperCase() != 'VOIDED').toList();
+          if (fresh.isNotEmpty) {
+            final last = fresh.last;
+            for (final m in chosen) {
+              snap = await _orderService.addModifier(
+                orderItemId: last.id,
+                modifierOptionId: m.id,
+              );
+            }
+          }
+        }
+        if (!mounted) return;
+        setState(() => _applyApiSnapshot(snap));
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      }
+      return;
+    }
     setState(() {
       _lines.add(
         CartLine(
@@ -197,6 +307,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
   }
 
   Future<void> _openLineEditor(int index) async {
+    if (_isEditMode) return;
     final line = _lines[index];
     final mods = await _repo.loadModifiersForItem(line.itemId);
     if (!mounted) return;
@@ -218,6 +329,10 @@ class _OrdersScreenState extends State<OrdersScreen> {
   }
 
   void _bumpQty(int index, int delta) {
+    if (_isEditMode) {
+      _bumpQtyRemote(index, delta);
+      return;
+    }
     final l = _lines[index];
     final next = l.qty + delta;
     if (next < 1) {
@@ -228,14 +343,31 @@ class _OrdersScreenState extends State<OrdersScreen> {
     _scheduleDraftSave();
   }
 
-  int get _subtotal =>
-      _lines.fold<int>(0, (s, l) => s + l.lineSubtotalCents);
+  Future<void> _bumpQtyRemote(int index, int delta) async {
+    if (index < 0 || index >= _lines.length) return;
+    final l = _lines[index];
+    final next = l.qty + delta;
+    try {
+      final snap = next <= 0
+          ? await _orderService.removeItem(l.lineId)
+          : await _orderService.updateQty(orderItemId: l.lineId, qty: next);
+      if (!mounted) return;
+      setState(() => _applyApiSnapshot(snap));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
+  int get _subtotal => _isEditMode ? _apiSubtotal : _lines.fold<int>(0, (s, l) => s + l.lineSubtotalCents);
   int get _discountTotal =>
-      _lines.fold<int>(0, (s, l) => s + l.discountCents);
-  int get _total =>
-      _lines.fold<int>(0, (s, l) => s + l.lineTotalCents);
+      _isEditMode
+          ? (_apiSubtotal - (_apiTotal - _apiTax - _apiService)).clamp(0, _apiSubtotal).toInt()
+          : _lines.fold<int>(0, (s, l) => s + l.discountCents);
+  int get _total => _isEditMode ? _apiTotal : _lines.fold<int>(0, (s, l) => s + l.lineTotalCents);
 
   Future<void> _queueForSync() async {
+    if (_isEditMode) return;
     if (_lines.isEmpty) return;
     final captured = List<CartLine>.from(_lines);
     final subtotal = _subtotal;
@@ -270,6 +402,201 @@ class _OrdersScreenState extends State<OrdersScreen> {
           ),
         ),
       );
+    }
+  }
+
+  Future<void> _sendKitchen() async {
+    final orderId = _activeOrderId ?? widget.orderId;
+    if (orderId == null || orderId.isEmpty) return;
+    try {
+      final snap = await _orderService.sendToKitchen(orderId);
+      if (!mounted) return;
+      setState(() => _applyApiSnapshot(snap));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sent new items to kitchen')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
+  Future<void> _goSettle() async {
+    final orderId = _activeOrderId ?? widget.orderId;
+    if (orderId == null || orderId.isEmpty) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => PaymentScreen(orderId: orderId)),
+    );
+    if (!mounted) return;
+    await _loadExistingOrder(orderId);
+  }
+
+  Future<void> _moveItemDialog() async {
+    if (!_isEditMode || _lines.isEmpty) return;
+    String? itemId = _lines.first.lineId;
+    final targetCtrl = TextEditingController();
+    String? targetFromTable;
+    List<DropdownMenuItem<String>> targetChoices = [];
+    try {
+      final layout = await _tablesLayout.loadLayoutPreferRemote();
+      final opts = <DropdownMenuItem<String>>[];
+      if (layout != null) {
+        for (final sec in layout.sections) {
+          for (final t in sec.tables) {
+            if (t.activeOrderId == null) continue;
+            if (t.activeOrderId == _activeOrderId) continue;
+            final oid = t.activeOrderId!;
+            opts.add(
+              DropdownMenuItem<String>(
+                value: oid,
+                child: Text('${t.name} · ${t.activeOrderNumber ?? oid.substring(0, 8)}'),
+              ),
+            );
+          }
+        }
+      }
+      targetChoices = opts;
+    } catch (_) {}
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Move item to another check'),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                initialValue: itemId,
+                decoration: const InputDecoration(
+                  labelText: 'Item',
+                  border: OutlineInputBorder(),
+                ),
+                items: _lines
+                    .map(
+                      (l) => DropdownMenuItem<String>(
+                        value: l.lineId,
+                        child: Text('${l.name} x${l.qty}', overflow: TextOverflow.ellipsis),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (v) => itemId = v,
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: targetCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Target order ID',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              if (targetChoices.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  initialValue: targetFromTable,
+                  decoration: const InputDecoration(
+                    labelText: 'Or pick from tables',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: targetChoices,
+                  onChanged: (v) {
+                    targetFromTable = v;
+                    if (v != null) targetCtrl.text = v;
+                  },
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Move')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final targetId = targetCtrl.text.trim();
+    if (itemId == null || itemId!.isEmpty || targetId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select item and target order ID')),
+      );
+      return;
+    }
+    try {
+      final moved = await _orderService.moveItem(orderItemId: itemId!, targetOrderId: targetId);
+      if (!mounted) return;
+      final current = moved['source'];
+      if (current != null) {
+        setState(() => _applyApiSnapshot(current));
+      } else {
+        await _loadExistingOrder(_activeOrderId ?? widget.orderId ?? '');
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Item moved successfully')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
+  Future<void> _splitBySeatFlow() async {
+    if (!_isEditMode) return;
+    final orderId = _activeOrderId ?? widget.orderId;
+    if (orderId == null || orderId.isEmpty) return;
+    final grouped = <int, List<CartLine>>{};
+    for (final l in _lines) {
+      final seat = _seatForLine(l);
+      if (seat == null) continue;
+      grouped.putIfAbsent(seat, () => <CartLine>[]).add(l);
+    }
+    if (grouped.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No seat-tagged items. Add items with seat first.')),
+      );
+      return;
+    }
+    int? selectedSeat = grouped.keys.first;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Split by seat'),
+        content: DropdownButtonFormField<int>(
+          initialValue: selectedSeat,
+          decoration: const InputDecoration(
+            labelText: 'Seat',
+            border: OutlineInputBorder(),
+          ),
+          items: (() {
+            final keys = grouped.keys.toList()..sort();
+            return keys
+                .map((s) => DropdownMenuItem<int>(value: s, child: Text('Seat $s')))
+                .toList();
+          })(),
+          onChanged: (v) => selectedSeat = v,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Split')),
+        ],
+      ),
+    );
+    if (ok != true || selectedSeat == null) return;
+    final lines = grouped[selectedSeat] ?? const <CartLine>[];
+    if (lines.isEmpty) return;
+    try {
+      await _orderService.splitOrderItems(
+        orderId: orderId,
+        orderItemIds: lines.map((x) => x.lineId).toList(),
+      );
+      if (!mounted) return;
+      await _loadExistingOrder(orderId);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Seat $selectedSeat split into new check')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
     }
   }
 
@@ -314,7 +641,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
     }
     if (cfg.autoPrintKitchenTicket) {
       final items = lines
-          .map((l) => KdsItemLine(name: l.name, qty: l.qty.toDouble()))
+          .map((l) => KdsItemLine(name: l.name, qty: l.qty.toDouble(), seatNo: _seatForLine(l)))
           .toList();
       await _printer.printKitchenTicket(
         ticketId: 'LOCAL-KITCHEN',
@@ -374,8 +701,61 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('New order'),
+        title: Text(
+          _isEditMode
+              ? 'Order ${_activeOrderNumber ?? (_activeOrderId?.substring(0, 8) ?? '')}'
+              : 'New order',
+        ),
+        bottom: _isEditMode && _activeOrderStatus.isNotEmpty
+            ? PreferredSize(
+                preferredSize: const Size.fromHeight(22),
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text(
+                    'Status: $_activeOrderStatus',
+                    style: Theme.of(context).textTheme.labelMedium,
+                  ),
+                ),
+              )
+            : null,
         actions: [
+          if (_isEditMode)
+            IconButton(
+              tooltip: 'Move item',
+              onPressed: _lines.isEmpty ? null : _moveItemDialog,
+              icon: const Icon(Icons.swap_horiz),
+            ),
+          if (_isEditMode)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.event_seat),
+              onSelected: (v) {
+                if (v == 'split_by_seat') {
+                  _splitBySeatFlow();
+                  return;
+                }
+                final seat = int.tryParse(v);
+                if (seat != null) {
+                  setState(() => _activeSeat = seat);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Active seat: $seat')),
+                  );
+                }
+              },
+              itemBuilder: (ctx) => [
+                const PopupMenuItem<String>(
+                  value: 'split_by_seat',
+                  child: Text('Split by seat'),
+                ),
+                const PopupMenuDivider(),
+                ...List.generate(
+                  8,
+                  (i) => PopupMenuItem<String>(
+                    value: '${i + 1}',
+                    child: Text('Set active seat ${i + 1}'),
+                  ),
+                ),
+              ],
+            ),
           IconButton(
             tooltip: 'Print order receipt',
             onPressed: _manualPrintOrder,
@@ -677,9 +1057,10 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     itemCount: _lines.length,
                     itemBuilder: (ctx, i) => _CartLineTile(
                       line: _lines[i],
-                      onTap: () => _openLineEditor(i),
+                      onTap: _isEditMode ? null : () => _openLineEditor(i),
                       onInc: () => _bumpQty(i, 1),
                       onDec: () => _bumpQty(i, -1),
+                      showEdit: !_isEditMode,
                     ),
                   ),
           ),
@@ -709,6 +1090,8 @@ class _OrdersScreenState extends State<OrdersScreen> {
                   ),
                 _totRow('Subtotal', _subtotal),
                 _totRow('Discounts', _discountTotal, neg: true),
+                if (_isEditMode) _totRow('Tax', _apiTax),
+                if (_isEditMode) _totRow('Service', _apiService),
                 const SizedBox(height: 6),
                 _totRow('Total', _total, strong: true),
               ],
@@ -726,9 +1109,9 @@ class _OrdersScreenState extends State<OrdersScreen> {
                         borderRadius: BorderRadius.circular(16),
                       ),
                     ),
-                    onPressed: _syncBusy ? null : _syncNow,
-                    icon: const Icon(Icons.cloud_upload),
-                    label: const Text('Sync now'),
+                    onPressed: _isEditMode ? (_lines.isEmpty ? null : _sendKitchen) : (_syncBusy ? null : _syncNow),
+                    icon: Icon(_isEditMode ? Icons.restaurant : Icons.cloud_upload),
+                    label: Text(_isEditMode ? 'Send to kitchen' : 'Sync now'),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -741,9 +1124,9 @@ class _OrdersScreenState extends State<OrdersScreen> {
                         borderRadius: BorderRadius.circular(16),
                       ),
                     ),
-                    onPressed: _lines.isEmpty ? null : _queueForSync,
-                    icon: const Icon(Icons.save_alt),
-                    label: const Text('Save order'),
+                    onPressed: _lines.isEmpty ? null : (_isEditMode ? _goSettle : _queueForSync),
+                    icon: Icon(_isEditMode ? Icons.point_of_sale : Icons.save_alt),
+                    label: Text(_isEditMode ? 'Settle' : 'Save order'),
                   ),
                 ),
               ],
@@ -835,12 +1218,14 @@ class _CartLineTile extends StatelessWidget {
     required this.onTap,
     required this.onInc,
     required this.onDec,
+    this.showEdit = true,
   });
 
   final CartLine line;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final VoidCallback onInc;
   final VoidCallback onDec;
+  final bool showEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -919,10 +1304,11 @@ class _CartLineTile extends StatelessWidget {
                   ),
                   _QtyButton(icon: Icons.add, onPressed: onInc),
                   const Spacer(),
-                  TextButton(
-                    onPressed: onTap,
-                    child: const Text('Edit'),
-                  ),
+                  if (showEdit)
+                    TextButton(
+                      onPressed: onTap,
+                      child: const Text('Edit'),
+                    ),
                 ],
               ),
             ],

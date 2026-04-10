@@ -8,6 +8,10 @@ export class CreateKdsTicketDto {
   @IsOptional()
   @IsString()
   station_id?: string;
+
+  @IsOptional()
+  @IsString({ each: true })
+  order_item_ids?: string[];
 }
 
 export class UpdateKdsTicketDto {

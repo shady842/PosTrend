@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/storage/local_storage.dart';
 import '../../services/delivery_service.dart';
-import 'payment_screen.dart';
+import 'orders_screen.dart';
 
 class DeliveryScreen extends StatefulWidget {
   const DeliveryScreen({super.key});
@@ -42,7 +42,12 @@ class _DeliveryScreenState extends State<DeliveryScreen> {
         SnackBar(content: Text('Delivery order opened (${order.orderNumber})')),
       );
       await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => PaymentScreen(orderId: order.orderId)),
+        MaterialPageRoute(
+          builder: (_) => OrdersScreen(
+            orderId: order.orderId,
+            mode: OrdersMode.deliveryEdit,
+          ),
+        ),
       );
     } catch (e) {
       if (!mounted) return;

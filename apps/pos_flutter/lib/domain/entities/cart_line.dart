@@ -38,6 +38,7 @@ class CartLine {
     this.modifiers = const [],
     this.variantId,
     this.variantName,
+    this.seatNo,
   });
 
   final String lineId;
@@ -46,6 +47,7 @@ class CartLine {
   final int unitPriceCents;
   final String? variantId;
   final String? variantName;
+  final int? seatNo;
   int qty;
   String notes;
   /// Per-line discount in cents (not percent — computed in UI).
@@ -72,6 +74,7 @@ class CartLine {
     List<LineModifier>? modifiers,
     String? variantId,
     String? variantName,
+    int? seatNo,
   }) {
     return CartLine(
       lineId: lineId ?? this.lineId,
@@ -84,6 +87,7 @@ class CartLine {
       modifiers: modifiers ?? List.from(this.modifiers),
       variantId: variantId ?? this.variantId,
       variantName: variantName ?? this.variantName,
+      seatNo: seatNo ?? this.seatNo,
     );
   }
 
@@ -98,6 +102,7 @@ class CartLine {
         'modifiers': modifiers.map((m) => m.toMap()).toList(),
         if (variantId != null) 'variant_id': variantId,
         if (variantName != null) 'variant_name': variantName,
+        if (seatNo != null) 'seat_no': seatNo,
       };
 
   static CartLine fromMap(Map<String, dynamic> m) {
@@ -115,6 +120,7 @@ class CartLine {
       modifiers: mods,
       variantId: m['variant_id'] as String?,
       variantName: m['variant_name'] as String?,
+      seatNo: (m['seat_no'] as num?)?.toInt(),
     );
   }
 

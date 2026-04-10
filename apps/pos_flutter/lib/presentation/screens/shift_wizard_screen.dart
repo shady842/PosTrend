@@ -2,6 +2,7 @@
 
 import '../../core/storage/local_storage.dart';
 import '../../services/shift_service.dart';
+import 'cashier_login_screen.dart';
 
 class ShiftWizardScreen extends StatefulWidget {
   const ShiftWizardScreen({super.key});
@@ -117,7 +118,13 @@ class _ShiftWizardScreenState extends State<ShiftWizardScreen> {
     }
     final variance = ShiftService.money(res['variance']);
     _snack('Shift closed. Variance: $variance');
-    await _refresh();
+    final deviceToken = await _storage.getDeviceAuthToken();
+    await _storage.saveJwt(deviceToken ?? '');
+    if (!mounted) return;
+    await Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const CashierLoginScreen()),
+      (route) => false,
+    );
   }
 
   Future<void> _runDayClose() async {

@@ -28,11 +28,18 @@ export class KdsService {
     });
     if (!order) throw new NotFoundException("Order not found");
 
+    const sourceItems = dto.order_item_ids?.length
+      ? order.items.filter((x) => dto.order_item_ids?.includes(x.id))
+      : order.items;
+    if (sourceItems.length === 0) {
+      throw new NotFoundException("No items to send to kitchen");
+    }
+
     const stationIds = new Set<string>();
     if (dto.station_id) {
       stationIds.add(dto.station_id);
     } else {
-      for (const item of order.items) {
+      for (const item of sourceItems) {
         const itemRule = await this.prisma.kitchenRoutingRule.findFirst({
           where: { branchId: ctx.branch_id, menuItemId: item.menuItemId }
         });
@@ -74,7 +81,11 @@ export class KdsService {
         data: {
           ticketId: ticket.id,
           eventType: "ticket_created",
-          payload: { order_id: order.id, station_id: stationId },
+          payload: {
+            order_id: order.id,
+            station_id: stationId,
+            order_item_ids: sourceItems.map((x) => x.id)
+          },
           status: "ack_pending"
         }
       });
@@ -128,19 +139,26 @@ export class KdsService {
       where: { id: ticket.id },
       data: { status: dto.status }
     });
-    const orderStatusMap: Record<string, string> = {
-      pending: "SENT_TO_KITCHEN",
-      preparing: "PREPARING",
-      ready: "READY",
-      served: "SERVED"
-    };
+    const all = await this.prisma.kdsTicket.findMany({
+      where: { orderId: ticket.orderId },
+      select: { status: true }
+    });
+    const statuses = all.map((x) => x.status);
+    let orderStatus = "SENT_TO_KITCHEN";
+    if (statuses.every((s) => s === "served")) {
+      orderStatus = "SERVED";
+    } else if (statuses.every((s) => s === "ready" || s === "served")) {
+      orderStatus = "READY";
+    } else if (statuses.some((s) => s === "preparing")) {
+      orderStatus = "PREPARING";
+    }
     await this.prisma.order.update({
       where: { id: ticket.orderId },
-      data: { status: orderStatusMap[dto.status] || "SENT_TO_KITCHEN" }
+      data: { status: orderStatus }
     });
     await this.prisma.orderItem.updateMany({
       where: { orderId: ticket.orderId, status: { not: "VOIDED" } },
-      data: { status: orderStatusMap[dto.status] || "SENT_TO_KITCHEN", kitchenStatus: orderStatusMap[dto.status] || "SENT_TO_KITCHEN" }
+      data: { status: orderStatus, kitchenStatus: orderStatus }
     });
     const branchId = ticket.station.branchId;
     const tenantId = ticket.station.tenantId;

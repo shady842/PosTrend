@@ -13,6 +13,16 @@ export class ReportsController {
     return this.reportsService.sales(ctx, query);
   }
 
+  @Get("hourly-sales")
+  hourlySales(@CurrentTenant() ctx: TenantContext, @Query() query: ReportFilterDto) {
+    return this.reportsService.hourlySales(ctx, query);
+  }
+
+  @Get("invoice-sales")
+  invoiceSales(@CurrentTenant() ctx: TenantContext, @Query() query: ReportFilterDto) {
+    return this.reportsService.invoiceSales(ctx, query);
+  }
+
   @Get("items")
   items(@CurrentTenant() ctx: TenantContext, @Query() query: ReportFilterDto) {
     return this.reportsService.items(ctx, query);
@@ -21,6 +31,11 @@ export class ReportsController {
   @Get("cashier")
   cashier(@CurrentTenant() ctx: TenantContext, @Query() query: ReportFilterDto) {
     return this.reportsService.cashier(ctx, query);
+  }
+
+  @Get("payment-methods")
+  paymentMethods(@CurrentTenant() ctx: TenantContext, @Query() query: ReportFilterDto) {
+    return this.reportsService.paymentMethods(ctx, query);
   }
 
   @Get("shifts")

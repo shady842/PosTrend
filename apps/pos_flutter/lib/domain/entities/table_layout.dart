@@ -119,6 +119,7 @@ TableVisualStatus visualStatusFor(DiningTableTile t) {
   final os = t.activeOrderStatus ?? 'OPEN';
   switch (os) {
     case 'BILLED':
+    case 'PAID':
       return TableVisualStatus.billing;
     case 'READY':
     case 'SERVED':

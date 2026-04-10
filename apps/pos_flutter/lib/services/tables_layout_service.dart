@@ -108,7 +108,7 @@ class TablesLayoutService {
   }
 
   Future<void> _enqueue(String action, Map<String, dynamic> payload) async {
-    final idem = 'tbl_${action}_${DateTime.now().toUtc().microsecondsSinceEpoch}';
+    final idem = _tableIdempotencyKey(action, payload);
     String opType;
     switch (action) {
       case 'open_table':
@@ -129,6 +129,21 @@ class TablesLayoutService {
       idempotencyKey: idem,
       payload: payload,
     );
+  }
+
+  String _tableIdempotencyKey(String action, Map<String, dynamic> payload) {
+    switch (action) {
+      case 'open_table':
+        return 'tbl_open_${payload['table_id']}_${payload['guest_count'] ?? 1}';
+      case 'transfer_table':
+        return 'tbl_transfer_${payload['order_id']}_${payload['to_table_id']}';
+      case 'merge_orders':
+        final a = '${payload['source_order_id']}';
+        final b = '${payload['target_order_id']}';
+        return a.compareTo(b) <= 0 ? 'tbl_merge_${a}_$b' : 'tbl_merge_${b}_$a';
+      default:
+        return 'tbl_${action}_${DateTime.now().toUtc().millisecondsSinceEpoch}';
+    }
   }
 
   Future<int> pendingQueueCount() => _outbox.countPendingTable();

@@ -274,19 +274,33 @@ class PaymentService {
     }
   }
 
-  Future<bool> applyDiscount({
+  Future<(bool, String?)> applyDiscount({
     required String orderId,
     required String type,
     required double value,
+    String scope = 'order',
+    String? orderItemId,
+    String? managerEmail,
+    String? managerPassword,
+    String? managerPin,
     String? reason,
   }) async {
     final token = await _bearer();
-    if (token == null) return false;
+    if (token == null) return (false, 'You are offline');
     try {
       final body = <String, dynamic>{
         'order_id': orderId,
         'type': type,
         'value': value,
+        'scope': scope,
+        if (orderItemId != null && orderItemId.trim().isNotEmpty)
+          'order_item_id': orderItemId.trim(),
+        if (managerEmail != null && managerEmail.trim().isNotEmpty)
+          'manager_email': managerEmail.trim(),
+        if (managerPassword != null && managerPassword.trim().isNotEmpty)
+          'manager_password': managerPassword,
+        if (managerPin != null && managerPin.trim().isNotEmpty)
+          'manager_pin': managerPin.trim(),
         if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
       };
       final res = await http
@@ -299,9 +313,16 @@ class PaymentService {
             body: jsonEncode(body),
           )
           .timeout(const Duration(seconds: 25));
-      return res.statusCode >= 200 && res.statusCode < 300;
+      if (res.statusCode >= 200 && res.statusCode < 300) return (true, null);
+      try {
+        final map = jsonDecode(res.body) as Map<String, dynamic>;
+        final msg = (map['message'] ?? 'Discount failed').toString();
+        return (false, msg);
+      } catch (_) {
+        return (false, 'Discount failed');
+      }
     } catch (_) {
-      return false;
+      return (false, 'Discount failed');
     }
   }
 

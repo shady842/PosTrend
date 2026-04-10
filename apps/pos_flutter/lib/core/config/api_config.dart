@@ -50,6 +50,12 @@ class ApiConfig {
   static String get posOrdersApplyPromotionUrl =>
       '$baseUrl/v1/pos/orders/apply-promotion';
   static String get posOrdersVoidOrderUrl => '$baseUrl/v1/pos/orders/void-order';
+  static String get posOrdersAddItemUrl => '$baseUrl/v1/pos/orders/add-item';
+  static String get posOrdersAddModifierUrl => '$baseUrl/v1/pos/orders/add-modifier';
+  static String get posOrdersUpdateQtyUrl => '$baseUrl/v1/pos/orders/update-qty';
+  static String get posOrdersRemoveItemUrl => '$baseUrl/v1/pos/orders/remove-item';
+  static String get posOrdersSendKitchenUrl => '$baseUrl/v1/pos/orders/send-kitchen';
+  static String get posOrdersMoveItemUrl => '$baseUrl/v1/pos/orders/move-item';
 
   static String posOrderUrl(String orderId) =>
       '$baseUrl/v1/pos/orders/$orderId';

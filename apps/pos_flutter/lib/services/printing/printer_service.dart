@@ -150,6 +150,12 @@ class PrinterService {
     return q.toStringAsFixed(2);
   }
 
+  static int? _seatFromNotes(String notes) {
+    final m = RegExp(r'seat\s*[:#-]?\s*(\d+)', caseSensitive: false).firstMatch(notes);
+    if (m == null) return null;
+    return int.tryParse(m.group(1) ?? '');
+  }
+
   Future<List<int>> _buildOrderReceiptBytes({
     required PrinterConfig cfg,
     required String orderId,
@@ -168,16 +174,28 @@ class PrinterService {
     bytes += gen.text('Time: ${DateTime.now().toLocal()}');
     bytes += gen.feed(1);
 
+    final groupedBySeat = <int, List<CartLine>>{};
     for (final l in lines) {
-      bytes += gen.row([
-        PosColumn(text: _qty(l.qty.toDouble()), width: 2),
-        PosColumn(text: l.name, width: 7),
-        PosColumn(
-          text: _money(l.lineTotalCents / 100),
-          width: 3,
-          styles: const PosStyles(align: PosAlign.right),
-        ),
-      ]);
+      final seat = l.seatNo ?? _seatFromNotes(l.notes) ?? 0;
+      groupedBySeat.putIfAbsent(seat, () => <CartLine>[]).add(l);
+    }
+    final seatKeys = groupedBySeat.keys.toList()..sort();
+    for (final seat in seatKeys) {
+      final title = seat <= 0 ? 'Seat: Unassigned' : 'Seat: $seat';
+      bytes += gen.text(title, styles: const PosStyles(bold: true));
+      final seatLines = groupedBySeat[seat] ?? const <CartLine>[];
+      for (final l in seatLines) {
+        bytes += gen.row([
+          PosColumn(text: _qty(l.qty.toDouble()), width: 2),
+          PosColumn(text: l.name, width: 7),
+          PosColumn(
+            text: _money(l.lineTotalCents / 100),
+            width: 3,
+            styles: const PosStyles(align: PosAlign.right),
+          ),
+        ]);
+      }
+      bytes += gen.hr(ch: '-');
     }
     bytes += gen.hr();
     bytes += gen.row([
@@ -218,11 +236,23 @@ class PrinterService {
     bytes += gen.text('Order: $orderId');
     bytes += gen.text('Station: $stationName');
     bytes += gen.hr();
+    final groupedBySeat = <int, List<KdsItemLine>>{};
     for (final it in items) {
-      bytes += gen.row([
-        PosColumn(text: 'x${_qty(it.qty)}', width: 3, styles: const PosStyles(bold: true)),
-        PosColumn(text: it.name, width: 9, styles: const PosStyles(bold: true)),
-      ]);
+      final seat = it.seatNo ?? 0;
+      groupedBySeat.putIfAbsent(seat, () => <KdsItemLine>[]).add(it);
+    }
+    final seatKeys = groupedBySeat.keys.toList()..sort();
+    for (final seat in seatKeys) {
+      final title = seat <= 0 ? 'Seat: Unassigned' : 'Seat: $seat';
+      bytes += gen.text(title, styles: const PosStyles(bold: true));
+      final seatItems = groupedBySeat[seat] ?? const <KdsItemLine>[];
+      for (final it in seatItems) {
+        bytes += gen.row([
+          PosColumn(text: 'x${_qty(it.qty)}', width: 3, styles: const PosStyles(bold: true)),
+          PosColumn(text: it.name, width: 9, styles: const PosStyles(bold: true)),
+        ]);
+      }
+      bytes += gen.hr(ch: '-');
     }
     bytes += gen.feed(2);
     bytes += gen.cut();
@@ -346,7 +376,7 @@ class PrinterService {
         'ticket_id': ticketId,
         'order_id': orderId,
         'station_name': stationName,
-        'items': items.map((e) => {'name': e.name, 'qty': e.qty}).toList(),
+        'items': items.map((e) => {'name': e.name, 'qty': e.qty, 'seat_no': e.seatNo}).toList(),
       });
     }
     return ok;
@@ -410,7 +440,11 @@ class PrinterService {
       final itemsRaw = job['items'] as List<dynamic>? ?? [];
       final items = itemsRaw.map((e) {
         final m = Map<String, dynamic>.from(e as Map);
-        return KdsItemLine(name: m['name']?.toString() ?? 'Item', qty: (m['qty'] as num?)?.toDouble() ?? 1);
+        return KdsItemLine(
+          name: m['name']?.toString() ?? 'Item',
+          qty: (m['qty'] as num?)?.toDouble() ?? 1,
+          seatNo: (m['seat_no'] as num?)?.toInt(),
+        );
       }).toList();
       return printKitchenTicket(
         ticketId: job['ticket_id']?.toString() ?? 'N/A',
