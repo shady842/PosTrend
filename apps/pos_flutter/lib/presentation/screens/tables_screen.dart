@@ -251,12 +251,95 @@ class _TablesScreenState extends State<TablesScreen> {
                   icon: const Icon(Icons.merge_type),
                   label: const Text('Merge with another table'),
                 ),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _splitOrderFlow(orderId, table.name);
+                  },
+                  icon: const Icon(Icons.call_split),
+                  label: const Text('Split selected items to new order'),
+                ),
               ],
             ),
           ),
         );
       },
     );
+  }
+
+  Future<void> _splitOrderFlow(String orderId, String tableName) async {
+    final items = await _tables.loadSplitCandidates(orderId);
+    if (!mounted) return;
+    if (items.length < 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Need at least 2 active items in the order to split.'),
+        ),
+      );
+      return;
+    }
+    final selected = <String>{};
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Split order — $tableName'),
+        content: SizedBox(
+          width: 520,
+          child: StatefulBuilder(
+            builder: (context, setInner) => ListView.builder(
+              shrinkWrap: true,
+              itemCount: items.length,
+              itemBuilder: (_, i) {
+                final it = items[i];
+                final on = selected.contains(it.id);
+                return CheckboxListTile(
+                  value: on,
+                  onChanged: (v) {
+                    setInner(() {
+                      if (v == true) {
+                        selected.add(it.id);
+                      } else {
+                        selected.remove(it.id);
+                      }
+                    });
+                  },
+                  title: Text(it.name),
+                  subtitle: Text('Qty ${it.qty} · ${it.status}'),
+                  controlAffinity: ListTileControlAffinity.platform,
+                );
+              },
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: selected.isEmpty ? null : () => Navigator.pop(ctx, true),
+            child: const Text('Split'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final result = await _tables.splitOrderItems(orderId, selected.toList());
+    if (!mounted) return;
+    if (result == TableActionResult.applied) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Order split into a new ticket')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Split failed on server. Please retry.')),
+      );
+    }
+    await _refresh();
   }
 
   Future<void> _onTableTap(DiningTableTile table) async {
