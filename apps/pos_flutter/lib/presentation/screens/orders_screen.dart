@@ -10,6 +10,7 @@ import '../../domain/entities/cart_line.dart';
 import '../../domain/entities/pos_menu.dart';
 import '../../services/kds_service.dart';
 import '../../services/menu_sync_service.dart';
+import '../../services/offline_sync_engine.dart';
 import '../../services/printing/printer_service.dart';
 import '../widgets/pos_order_sheets.dart';
 
@@ -236,6 +237,9 @@ class _OrdersScreenState extends State<OrdersScreen> {
     final discount = _discountTotal;
     final total = _total;
     await _repo.queueOrderForSync(List<CartLine>.from(_lines));
+    if (_online) {
+      await OfflineSyncEngine(LocalStorage(), _appDb).runPush();
+    }
     final pending = await _repo.countPendingOrders();
     await _tryAutoPrintOrderAndKitchen(
       lines: captured,
@@ -253,7 +257,9 @@ class _OrdersScreenState extends State<OrdersScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Order saved locally. ${_online ? 'Will sync when connected.' : 'Offline — will sync later.'}',
+            _online && pending == 0
+                ? 'Order synced to backend'
+                : 'Order saved locally. ${_online ? 'Sync retry in progress.' : 'Offline — will sync later.'}',
           ),
         ),
       );

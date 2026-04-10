@@ -262,7 +262,10 @@ export class SaasService {
   }
 
   async login(email: string, password: string) {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const normalizedEmail = this.normalizeEmail(email);
+    const user = await this.prisma.user.findFirst({
+      where: { email: { equals: normalizedEmail, mode: "insensitive" } }
+    });
     if (!user || !user.passwordHash || !this.verifySecret(password, user.passwordHash)) {
       throw new UnauthorizedException("Invalid credentials");
     }
@@ -290,7 +293,10 @@ export class SaasService {
       throw new UnauthorizedException("Device token required");
     }
     const deviceId = ctx.sub.slice("device:".length);
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const normalizedEmail = this.normalizeEmail(email);
+    const user = await this.prisma.user.findFirst({
+      where: { email: { equals: normalizedEmail, mode: "insensitive" } }
+    });
     if (!user || !user.passwordHash || !this.verifySecret(password, user.passwordHash)) {
       throw new UnauthorizedException("Invalid credentials");
     }
@@ -466,7 +472,10 @@ export class SaasService {
   }
 
   async createUser(ctx: TenantContext, dto: CreateUserDto) {
-    const exists = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    const normalizedEmail = this.normalizeEmail(dto.email);
+    const exists = await this.prisma.user.findFirst({
+      where: { email: { equals: normalizedEmail, mode: "insensitive" } }
+    });
     if (exists) throw new ForbiddenException("Email already exists");
 
     const role = await this.prisma.role.findFirst({
@@ -484,7 +493,7 @@ export class SaasService {
           tenantId: ctx.tenant_id,
           conceptId,
           branchId,
-          email: dto.email,
+          email: normalizedEmail,
           passwordHash,
           fullName: dto.full_name,
           status: "active"
@@ -544,6 +553,17 @@ export class SaasService {
     });
     if (!user) throw new ForbiddenException("User not found");
 
+    const normalizedEmail = dto.email ? this.normalizeEmail(dto.email) : undefined;
+    if (normalizedEmail && normalizedEmail.toLowerCase() !== user.email.toLowerCase()) {
+      const emailExists = await this.prisma.user.findFirst({
+        where: {
+          email: { equals: normalizedEmail, mode: "insensitive" },
+          id: { not: user.id }
+        }
+      });
+      if (emailExists) throw new ForbiddenException("Email already exists");
+    }
+
     const nextRoleId = dto.role_id;
     if (nextRoleId) {
       const role = await this.prisma.role.findFirst({
@@ -557,7 +577,7 @@ export class SaasService {
         where: { id: user.id },
         data: {
           fullName: dto.full_name ?? user.fullName,
-          email: dto.email ?? user.email,
+          email: normalizedEmail ?? user.email,
           passwordHash: dto.password ? this.hashSecret(dto.password) : user.passwordHash,
           branchId: dto.branch_id ?? user.branchId,
           status: dto.status ?? user.status
@@ -855,6 +875,10 @@ export class SaasService {
     const hashBuffer = scryptSync(secret, salt, 64);
     const keyBuffer = Buffer.from(key, "hex");
     return hashBuffer.length === keyBuffer.length && timingSafeEqual(hashBuffer, keyBuffer);
+  }
+
+  private normalizeEmail(email: string) {
+    return email.trim().toLowerCase();
   }
 
   private resolveTimezone(country: string) {
