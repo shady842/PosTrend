@@ -8,6 +8,7 @@ import '../../data/local/app_database.dart';
 import '../../domain/entities/table_layout.dart';
 import '../../services/pos_realtime_sync.dart';
 import '../../services/tables_layout_service.dart';
+import 'orders_screen.dart';
 
 enum _ToolbarMode {
   normal,
@@ -171,6 +172,9 @@ class _TablesScreenState extends State<TablesScreen> {
     if (result == TableActionResult.applied) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Opened ${table.name}')),
+      );
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const OrdersScreen()),
       );
     } else if (result == TableActionResult.queued) {
       ScaffoldMessenger.of(context).showSnackBar(
