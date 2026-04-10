@@ -56,6 +56,13 @@ class OfflineSyncEngine {
     return null;
   }
 
+  int _attemptCount(Map<String, dynamic> row) {
+    final raw = row['attempt_count'];
+    if (raw == null) return 0;
+    if (raw is num) return raw.toInt();
+    return int.tryParse(raw.toString()) ?? 0;
+  }
+
   /// Push pending outbox rows (idempotent server-side ledger).
   Future<void> runPush() async {
     final token = await _bearer();
@@ -106,7 +113,7 @@ class OfflineSyncEngine {
       for (var i = 0; i < rowIds.length; i++) {
         final r = rows[i];
         final id = r['id'] as String;
-        final n = ((r['attempt_count'] as num?)?.toInt() ?? 0) + 1;
+        final n = _attemptCount(r) + 1;
         await _outbox.markFailed(
           id: id,
           attemptCount: n,
@@ -120,7 +127,7 @@ class OfflineSyncEngine {
       for (var i = 0; i < rowIds.length; i++) {
         final r = rows[i];
         final id = r['id'] as String;
-        final n = ((r['attempt_count'] as num?)?.toInt() ?? 0) + 1;
+        final n = _attemptCount(r) + 1;
         await _outbox.markFailed(
           id: id,
           attemptCount: n,
@@ -137,7 +144,7 @@ class OfflineSyncEngine {
       for (var i = 0; i < rowIds.length; i++) {
         final r = rows[i];
         final id = r['id'] as String;
-        final n = ((r['attempt_count'] as num?)?.toInt() ?? 0) + 1;
+        final n = _attemptCount(r) + 1;
         await _outbox.markFailed(
           id: id,
           attemptCount: n,
@@ -152,7 +159,7 @@ class OfflineSyncEngine {
       final id = rowIds[i];
       final r = rows[i];
       if (i >= results.length) {
-        final n = ((r['attempt_count'] as num?)?.toInt() ?? 0) + 1;
+        final n = _attemptCount(r) + 1;
         await _outbox.markFailed(
           id: id,
           attemptCount: n,
@@ -162,7 +169,7 @@ class OfflineSyncEngine {
       }
       final item = results[i];
       if (item is! Map) {
-        final n = ((r['attempt_count'] as num?)?.toInt() ?? 0) + 1;
+        final n = _attemptCount(r) + 1;
         await _outbox.markFailed(
           id: id,
           attemptCount: n,
@@ -178,7 +185,7 @@ class OfflineSyncEngine {
         await _outbox.markSynced(id);
       } else {
         final err = item['error']?.toString() ?? 'rejected';
-        final n = ((r['attempt_count'] as num?)?.toInt() ?? 0) + 1;
+        final n = _attemptCount(r) + 1;
         await _outbox.markFailed(
           id: id,
           attemptCount: n,

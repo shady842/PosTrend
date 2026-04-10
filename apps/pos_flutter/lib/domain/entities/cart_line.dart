@@ -18,10 +18,15 @@ class LineModifier {
       };
 
   static LineModifier fromMap(Map<String, dynamic> m) {
+    int toInt(dynamic v) {
+      if (v == null) return 0;
+      if (v is num) return v.toInt();
+      return int.tryParse(v.toString()) ?? 0;
+    }
     return LineModifier(
       id: m['id'] as String,
       name: m['name'] as String,
-      priceDeltaCents: (m['price_delta_cents'] as num).toInt(),
+      priceDeltaCents: toInt(m['price_delta_cents']),
     );
   }
 }

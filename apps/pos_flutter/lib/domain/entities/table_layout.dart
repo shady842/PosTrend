@@ -53,18 +53,23 @@ class DiningTableTile {
   final int? guestCount;
 
   static DiningTableTile fromJson(Map<String, dynamic> m) {
+    int? toInt(dynamic v) {
+      if (v == null) return null;
+      if (v is num) return v.toInt();
+      return int.tryParse(v.toString());
+    }
     return DiningTableTile(
       id: m['id'] as String,
       floorId: m['floorId'] as String,
       name: m['name'] as String,
-      seats: (m['seats'] as num?)?.toInt() ?? 2,
+      seats: toInt(m['seats']) ?? 2,
       isActive: m['isActive'] == true,
       status: m['status'] as String? ?? 'available',
       activeOrderId: m['active_order_id'] as String?,
       activeOrderNumber: m['active_order_number'] as String?,
       activeOrderStatus: m['active_order_status'] as String?,
       openedAt: m['opened_at'] as String?,
-      guestCount: (m['guest_count'] as num?)?.toInt(),
+      guestCount: toInt(m['guest_count']),
     );
   }
 }

@@ -17,7 +17,14 @@ class PosLocalRepository {
 
   static int _apiMoneyToCents(dynamic v) {
     if (v == null) return 0;
-    return ((v as num).toDouble() * 100).round();
+    if (v is num) return (v.toDouble() * 100).round();
+    return ((double.tryParse(v.toString()) ?? 0) * 100).round();
+  }
+
+  static int _toInt(dynamic v, {int fallback = 0}) {
+    if (v == null) return fallback;
+    if (v is num) return v.toInt();
+    return int.tryParse(v.toString()) ?? fallback;
   }
 
   MenuItem _rowToMenuItem(Map<String, Object?> r) {
@@ -25,12 +32,12 @@ class PosLocalRepository {
       id: r['id']! as String,
       categoryId: r['category_id']! as String,
       name: r['name']! as String,
-      priceCents: (r['price_cents'] as num).toInt(),
+      priceCents: _toInt(r['price_cents']),
       description: r['description'] as String?,
       barcode: r['barcode'] as String?,
       imageUrl: r['image_url'] as String?,
-      isCombo: ((r['is_combo'] as int?) ?? 0) != 0,
-      displayOrder: (r['display_order'] as int?) ?? 0,
+      isCombo: _toInt(r['is_combo']) != 0,
+      displayOrder: _toInt(r['display_order']),
     );
   }
 
@@ -45,7 +52,7 @@ class PosLocalRepository {
           (r) => MenuCategory(
             id: r['id']! as String,
             name: r['name']! as String,
-            sortOrder: (r['sort_order'] as int?) ?? 0,
+            sortOrder: _toInt(r['sort_order']),
           ),
         )
         .toList();
@@ -105,8 +112,8 @@ class PosLocalRepository {
             id: r['id']! as String,
             itemId: itemId,
             name: r['name']! as String,
-            priceCents: (r['price_cents'] as num).toInt(),
-            isDefault: ((r['is_default'] as int?) ?? 0) != 0,
+            priceCents: _toInt(r['price_cents']),
+            isDefault: _toInt(r['is_default']) != 0,
             sku: r['sku'] as String?,
             barcode: r['barcode'] as String?,
           ),
@@ -140,7 +147,7 @@ class PosLocalRepository {
               id: r['oid']! as String,
               itemId: itemId,
               name: '${r['gname']}: ${r['oname']}',
-              priceDeltaCents: (r['opc']! as num).toInt(),
+              priceDeltaCents: _toInt(r['opc']),
               groupId: r['gid'] as String?,
             ),
           )
@@ -159,7 +166,7 @@ class PosLocalRepository {
               id: r['id']! as String,
               itemId: itemId,
               name: r['name']! as String,
-              priceDeltaCents: (r['price_delta_cents'] as num).toInt(),
+              priceDeltaCents: _toInt(r['price_delta_cents']),
             ),
           )
           .toList();
@@ -215,7 +222,7 @@ class PosLocalRepository {
           {
             'id': c['id'] as String,
             'name': c['name'] as String,
-            'sort_order': (c['display_order'] as num?)?.toInt() ?? 0,
+            'sort_order': _toInt(c['display_order']),
           },
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
@@ -282,8 +289,8 @@ class PosLocalRepository {
               'item_id': id,
               'group_id': gid,
               'name': gm['name'] as String,
-              'min_select': (gm['min_select'] as num?)?.toInt() ?? 0,
-              'max_select': (gm['max_select'] as num?)?.toInt() ?? 1,
+              'min_select': _toInt(gm['min_select']),
+              'max_select': _toInt(gm['max_select'], fallback: 1),
               'is_required': (gm['is_required'] == true) ? 1 : 0,
               'sort_order': gOrder++,
             },
@@ -298,7 +305,7 @@ class PosLocalRepository {
                 'group_id': gid,
                 'name': om['name'] as String,
                 'price_cents': _apiMoneyToCents(om['price']),
-                'display_order': (om['display_order'] as num?)?.toInt() ?? 0,
+                'display_order': _toInt(om['display_order']),
               },
               conflictAlgorithm: ConflictAlgorithm.replace,
             );

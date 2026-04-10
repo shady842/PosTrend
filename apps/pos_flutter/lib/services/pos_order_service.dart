@@ -85,7 +85,7 @@ class PosOrderService {
           (x) => PosOrderItem(
             id: (x['id'] ?? '').toString(),
             name: (x['nameSnapshot'] ?? 'Item').toString(),
-            qty: ((x['qty'] as num?) ?? num.tryParse('${x['qty']}') ?? 1).toInt(),
+            qty: _toInt(x['qty']) ?? 1,
             lineTotal: _moneyToCents(x['lineTotal']),
             status: (x['status'] ?? '').toString(),
             notes: (x['notes'] ?? '').toString(),

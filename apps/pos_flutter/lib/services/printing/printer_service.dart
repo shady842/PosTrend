@@ -162,6 +162,12 @@ class PrinterService {
     return int.tryParse(v.toString());
   }
 
+  static double _toDouble(dynamic v, {double fallback = 0}) {
+    if (v == null) return fallback;
+    if (v is num) return v.toDouble();
+    return double.tryParse(v.toString()) ?? fallback;
+  }
+
   Future<List<int>> _buildOrderReceiptBytes({
     required PrinterConfig cfg,
     required String orderId,
@@ -463,12 +469,12 @@ class PrinterService {
       return printPaymentReceipt(
         orderId: job['order_id']?.toString() ?? 'N/A',
         paymentMethod: job['payment_method']?.toString() ?? 'manual',
-        paidAmount: (job['paid_amount'] as num?)?.toDouble() ?? 0,
-        dueAmountAfter: (job['due_after'] as num?)?.toDouble() ?? 0,
-        changeAmount: (job['change_amount'] as num?)?.toDouble() ?? 0,
-        tipAmount: (job['tip_amount'] as num?)?.toDouble() ?? 0,
-        totalAmount: (job['total_amount'] as num?)?.toDouble(),
-        taxAmount: (job['tax_amount'] as num?)?.toDouble(),
+        paidAmount: _toDouble(job['paid_amount']),
+        dueAmountAfter: _toDouble(job['due_after']),
+        changeAmount: _toDouble(job['change_amount']),
+        tipAmount: _toDouble(job['tip_amount']),
+        totalAmount: _toDouble(job['total_amount'], fallback: 0),
+        taxAmount: _toDouble(job['tax_amount'], fallback: 0),
       );
     }
     return false;
