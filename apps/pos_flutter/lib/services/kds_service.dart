@@ -9,6 +9,9 @@ class KdsTicket {
   KdsTicket({
     required this.id,
     required this.orderId,
+    required this.orderNumber,
+    required this.tableLabel,
+    required this.sectionName,
     required this.stationName,
     required this.status,
     required this.createdAt,
@@ -17,6 +20,9 @@ class KdsTicket {
 
   final String id;
   final String orderId;
+  final String? orderNumber;
+  final String? tableLabel;
+  final String? sectionName;
   final String stationName;
   final String status; // pending | preparing | ready
   final DateTime createdAt;
@@ -26,17 +32,21 @@ class KdsTicket {
     final id = json['id']?.toString();
     final orderId = json['orderId']?.toString() ?? json['order_id']?.toString();
     if (id == null || orderId == null) return null;
+    final orderNumber = json['order_number']?.toString() ?? json['orderNumber']?.toString();
+    final tableLabel = json['table_label']?.toString();
+    final sectionName = json['section_name']?.toString();
     final station = json['station'];
     final stationName = station is Map
         ? (station['name']?.toString() ?? 'Station')
         : 'Station';
     final status = (json['status']?.toString() ?? 'pending').toLowerCase();
     final createdAt =
-        DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
+        DateTime.tryParse(json['createdAt']?.toString() ?? json['created_at']?.toString() ?? '') ??
             DateTime.now();
 
     final order = json['order'];
-    final orderItems = order is Map ? order['items'] : null;
+    final topItems = json['items'];
+    final orderItems = topItems is List ? topItems : (order is Map ? order['items'] : null);
     final items = <KdsItemLine>[];
     if (orderItems is List) {
       for (final raw in orderItems) {
@@ -44,8 +54,10 @@ class KdsTicket {
         final m = Map<String, dynamic>.from(raw);
         final name = (m['nameSnapshot']?.toString() ??
                 m['name']?.toString() ??
+                m['name']?.toString() ??
                 'Item')
             .trim();
+        final safeName = name.isEmpty ? 'Item' : name;
         final qty = (m['qty'] is num)
             ? (m['qty'] as num).toDouble()
             : double.tryParse(m['qty']?.toString() ?? '') ?? 1;
@@ -54,13 +66,16 @@ class KdsTicket {
           m['seat_no'],
           m['notes']?.toString(),
         );
-        items.add(KdsItemLine(name: name, qty: qty, seatNo: seatNo));
+        items.add(KdsItemLine(name: safeName, qty: qty, seatNo: seatNo));
       }
     }
 
     return KdsTicket(
       id: id,
       orderId: orderId,
+      orderNumber: orderNumber,
+      tableLabel: tableLabel,
+      sectionName: sectionName,
       stationName: stationName,
       status: status,
       createdAt: createdAt,

@@ -62,8 +62,41 @@ export class KdsService {
       }
     }
 
+    const ensureFallbackStation = async () => {
+      let fallback = await this.prisma.kitchenStation.findFirst({
+        where: { tenantId: ctx.tenant_id, branchId: ctx.branch_id },
+        orderBy: { name: "asc" }
+      });
+      if (!fallback) {
+        fallback = await this.prisma.kitchenStation.create({
+          data: {
+            tenantId: ctx.tenant_id,
+            branchId: ctx.branch_id,
+            name: "Main Kitchen"
+          }
+        });
+      }
+      return fallback.id;
+    };
+
+    // Keep only valid station IDs for this tenant/branch to avoid FK failures.
+    const requestedStationIds = [...stationIds];
+    const validStations = requestedStationIds.length
+      ? await this.prisma.kitchenStation.findMany({
+          where: {
+            id: { in: requestedStationIds },
+            tenantId: ctx.tenant_id,
+            branchId: ctx.branch_id
+          },
+          select: { id: true }
+        })
+      : [];
+    const validStationIds = new Set(validStations.map((s) => s.id));
+    stationIds.clear();
+    for (const id of validStationIds) stationIds.add(id);
+
     if (stationIds.size === 0) {
-      throw new NotFoundException("No routing station found for order");
+      stationIds.add(await ensureFallbackStation());
     }
 
     const tickets = [];
@@ -105,7 +138,7 @@ export class KdsService {
   }
 
   async activeTickets(ctx: TenantContext) {
-    return this.prisma.kdsTicket.findMany({
+    const tickets = await this.prisma.kdsTicket.findMany({
       where: {
         station: {
           tenantId: ctx.tenant_id,
@@ -115,11 +148,61 @@ export class KdsService {
       },
       include: {
         order: {
-          include: { items: true }
+          include: { items: true, tableSession: true }
         },
         station: true
       },
       orderBy: { createdAt: "asc" }
+    });
+    if (tickets.length === 0) return [];
+
+    const tableIds = [
+      ...new Set(
+        tickets
+          .map((t) => t.order.tableSession?.tableId)
+          .filter((id): id is string => Boolean(id))
+      )
+    ];
+    const tables = tableIds.length
+      ? await this.prisma.diningTable.findMany({
+          where: { id: { in: tableIds }, tenantId: ctx.tenant_id, branchId: ctx.branch_id },
+          select: { id: true, name: true, floorId: true }
+        })
+      : [];
+    const floorIds = [...new Set(tables.map((t) => t.floorId).filter(Boolean))];
+    const floors = floorIds.length
+      ? await this.prisma.floor.findMany({
+          where: { id: { in: floorIds }, tenantId: ctx.tenant_id, branchId: ctx.branch_id },
+          select: { id: true, name: true }
+        })
+      : [];
+    const tableMap = new Map(tables.map((t) => [t.id, t]));
+    const floorMap = new Map(floors.map((f) => [f.id, f.name]));
+
+    return tickets.map((t) => {
+      const tableId = t.order.tableSession?.tableId || null;
+      const table = tableId ? tableMap.get(tableId) : null;
+      const sectionName = table?.floorId ? floorMap.get(table.floorId) || null : null;
+      return {
+        id: t.id,
+        order_id: t.orderId,
+        order_number: t.order.orderNumber || null,
+        table_label: table?.name || (t.order.orderType === "TAKEAWAY" ? "Takeaway" : t.order.orderType === "DELIVERY" ? "Delivery" : null),
+        section_name: sectionName,
+        status: t.status,
+        created_at: t.createdAt.toISOString(),
+        station: { id: t.station.id, name: t.station.name },
+        items: t.order.items
+          .filter((i) => i.status !== "VOIDED")
+          .map((i) => ({
+            id: i.id,
+            name: (i.nameSnapshot || "").trim() || "Item",
+            qty: Number(i.qty),
+            seat_no: i.seatNo,
+            notes: i.notes || null,
+            kitchen_status: i.kitchenStatus
+          }))
+      };
     });
   }
 

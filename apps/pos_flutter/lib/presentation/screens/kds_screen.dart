@@ -387,16 +387,39 @@ class _KdsScreenState extends State<KdsScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Order: ${t.orderId}',
+              'Order: ${t.orderNumber?.isNotEmpty == true ? t.orderNumber : t.orderId}',
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
               overflow: TextOverflow.ellipsis,
             ),
+            if ((t.tableLabel ?? '').isNotEmpty || (t.sectionName ?? '').isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  [
+                    if ((t.tableLabel ?? '').isNotEmpty) 'Table: ${t.tableLabel}',
+                    if ((t.sectionName ?? '').isNotEmpty) 'Section: ${t.sectionName}',
+                  ].join('  |  '),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             const SizedBox(height: 10),
             Expanded(
               child: ListView(
                 children: [
+                  if (seatKeys.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 6),
+                      child: Text(
+                        'No item lines on this ticket yet',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                      ),
+                    ),
                   for (final seat in seatKeys) ...[
                     Padding(
                       padding: const EdgeInsets.only(top: 2, bottom: 6),
