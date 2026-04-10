@@ -4,6 +4,16 @@ import 'package:sqflite/sqflite.dart';
 
 import 'app_database.dart';
 
+class SyncOutboxDiagnostics {
+  SyncOutboxDiagnostics({
+    required this.pendingCount,
+    required this.latestError,
+  });
+
+  final int pendingCount;
+  final String? latestError;
+}
+
 class SyncOutboxRepository {
   SyncOutboxRepository(this._appDb);
 
@@ -54,6 +64,25 @@ class SyncOutboxRepository {
       await db.rawQuery('SELECT COUNT(*) FROM sync_outbox WHERE synced = 0'),
     );
     return n ?? 0;
+  }
+
+  Future<SyncOutboxDiagnostics> diagnostics() async {
+    final db = await _db;
+    final pending = Sqflite.firstIntValue(
+          await db.rawQuery('SELECT COUNT(*) FROM sync_outbox WHERE synced = 0'),
+        ) ??
+        0;
+    final rows = await db.rawQuery(
+      '''
+      SELECT last_error
+      FROM sync_outbox
+      WHERE synced = 0 AND last_error IS NOT NULL AND last_error <> ''
+      ORDER BY created_at DESC
+      LIMIT 1
+      ''',
+    );
+    final latest = rows.isEmpty ? null : (rows.first['last_error'] as String?);
+    return SyncOutboxDiagnostics(pendingCount: pending, latestError: latest);
   }
 
   Future<int> countPendingPaymentUi() async {

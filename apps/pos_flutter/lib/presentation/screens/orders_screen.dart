@@ -6,6 +6,7 @@ import '../../core/network/connectivity_service.dart';
 import '../../core/storage/local_storage.dart';
 import '../../data/local/app_database.dart';
 import '../../data/local/pos_local_repository.dart';
+import '../../data/local/sync_outbox_repository.dart';
 import '../../domain/entities/cart_line.dart';
 import '../../domain/entities/pos_menu.dart';
 import '../../services/kds_service.dart';
@@ -36,6 +37,8 @@ class _OrdersScreenState extends State<OrdersScreen> {
   bool _loading = true;
   bool _online = true;
   int _pendingOutbox = 0;
+  String? _latestSyncError;
+  bool _syncBusy = false;
   String? _menuSyncedAt;
   Timer? _draftDebounce;
 
@@ -59,6 +62,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
     final cats = await _repo.loadCategories();
     final draft = await _repo.loadDraft();
     final pending = await _repo.countPendingOrders();
+    final diag = await SyncOutboxRepository(_appDb).diagnostics();
     final syncAt = await _repo.getMenuMeta('last_menu_sync_at');
     if (!mounted) return;
     setState(() {
@@ -66,6 +70,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
       _categoryId = cats.isNotEmpty ? cats.first.id : null;
       _lines = draft;
       _pendingOutbox = pending;
+      _latestSyncError = diag.latestError;
       _menuSyncedAt = syncAt;
       _loading = false;
     });
@@ -241,6 +246,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
       await OfflineSyncEngine(LocalStorage(), _appDb).runPush();
     }
     final pending = await _repo.countPendingOrders();
+    final diag = await SyncOutboxRepository(_appDb).diagnostics();
     await _tryAutoPrintOrderAndKitchen(
       lines: captured,
       subtotalCents: subtotal,
@@ -251,6 +257,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
     setState(() {
       _lines.clear();
       _pendingOutbox = pending;
+      _latestSyncError = diag.latestError;
     });
     await _repo.saveDraft([]);
     if (mounted) {
@@ -264,6 +271,27 @@ class _OrdersScreenState extends State<OrdersScreen> {
         ),
       );
     }
+  }
+
+  Future<void> _syncNow() async {
+    if (_syncBusy) return;
+    setState(() => _syncBusy = true);
+    await OfflineSyncEngine(LocalStorage(), _appDb).runPush();
+    final pending = await _repo.countPendingOrders();
+    final diag = await SyncOutboxRepository(_appDb).diagnostics();
+    if (!mounted) return;
+    setState(() {
+      _pendingOutbox = pending;
+      _latestSyncError = diag.latestError;
+      _syncBusy = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          pending == 0 ? 'All queued orders synced' : '$pending order(s) still queued',
+        ),
+      ),
+    );
   }
 
   Future<void> _tryAutoPrintOrderAndKitchen({
@@ -362,6 +390,17 @@ class _OrdersScreenState extends State<OrdersScreen> {
             tooltip: 'Refresh menu',
             onPressed: _refreshMenu,
             icon: const Icon(Icons.refresh),
+          ),
+          IconButton(
+            tooltip: 'Sync queued orders now',
+            onPressed: _syncBusy ? null : _syncNow,
+            icon: _syncBusy
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.cloud_upload),
           ),
           if (_pendingOutbox > 0)
             Padding(
@@ -617,6 +656,25 @@ class _OrdersScreenState extends State<OrdersScreen> {
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             child: Column(
               children: [
+                if (_pendingOutbox > 0)
+                  Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.errorContainer,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      _latestSyncError == null
+                          ? 'Pending sync: $_pendingOutbox order(s). Tap cloud-upload to retry now.'
+                          : 'Pending sync: $_pendingOutbox order(s).\nLatest error: $_latestSyncError',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onErrorContainer,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
                 _totRow('Subtotal', _subtotal),
                 _totRow('Discounts', _discountTotal, neg: true),
                 const SizedBox(height: 6),
