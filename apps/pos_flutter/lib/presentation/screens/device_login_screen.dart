@@ -6,7 +6,7 @@ import '../../core/storage/local_storage.dart';
 import '../../data/repositories/auth_repository_impl.dart';
 import '../../widgets/large_touch_button.dart';
 import '../../widgets/numeric_keypad.dart';
-import 'sync_loading_screen.dart';
+import 'cashier_login_screen.dart';
 
 class DeviceLoginScreen extends StatefulWidget {
   const DeviceLoginScreen({super.key});
@@ -157,7 +157,7 @@ class _DeviceLoginScreenState extends State<DeviceLoginScreen> {
       );
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const SyncLoadingScreen()),
+        MaterialPageRoute(builder: (_) => const CashierLoginScreen()),
       );
     } catch (e, st) {
       debugPrint('$e\n$st');

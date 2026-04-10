@@ -38,7 +38,7 @@ class AuthRepositoryImpl implements AuthRepository {
     } on SocketException catch (e) {
       throw Exception(
         'Cannot reach API at ${ApiConfig.baseUrl}\n'
-        '${e.message ?? e.osError?.message ?? "network error"}\n'
+        '${e.message.isNotEmpty ? e.message : (e.osError?.message ?? "network error")}\n'
         'Same Wi‑Fi as your server? Firewall allows port 3000?',
       );
     }
@@ -113,6 +113,7 @@ class AuthRepositoryImpl implements AuthRepository {
     await _storage.setRememberDevice(rememberDevice);
     if (rememberDevice) {
       await _storage.saveDeviceCode(trimmedCode);
+      await _storage.saveDeviceSecret(trimmedSecret);
       if (deviceName.trim().isNotEmpty) {
         await _storage.saveDeviceDisplayName(deviceName.trim());
       } else {

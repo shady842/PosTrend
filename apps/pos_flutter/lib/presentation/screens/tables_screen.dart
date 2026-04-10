@@ -166,18 +166,24 @@ class _TablesScreenState extends State<TablesScreen> {
       },
     );
     if (guests == null || !mounted) return;
-    final ok = await _tables.openTable(table.id, guestCount: guests);
+    final result = await _tables.openTable(table.id, guestCount: guests);
     if (!mounted) return;
-    if (ok) {
+    if (result == TableActionResult.applied) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Opened ${table.name}')),
       );
-    } else {
+    } else if (result == TableActionResult.queued) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
             'Could not open online. Action saved to queue for when you reconnect.',
           ),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Open table failed on server. Check branch/table state and try again.'),
         ),
       );
     }
@@ -310,18 +316,24 @@ class _TablesScreenState extends State<TablesScreen> {
           ),
         );
         if (go != true || !mounted) return;
-        final ok = await _tables.transferOrder(oid, table.id);
+        final result = await _tables.transferOrder(oid, table.id);
         if (!mounted) return;
-        if (ok) {
+        if (result == TableActionResult.applied) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Transfer completed')),
           );
-        } else {
+        } else if (result == TableActionResult.queued) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
                 'Transfer queued or failed. Retry when online.',
               ),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Transfer rejected by server. Refresh and try again.'),
             ),
           );
         }
@@ -378,17 +390,21 @@ class _TablesScreenState extends State<TablesScreen> {
           ),
         );
         if (go != true || !mounted) return;
-        final ok = await _tables.mergeOrders(src, tgt);
+        final result = await _tables.mergeOrders(src, tgt);
         if (!mounted) return;
-        if (ok) {
+        if (result == TableActionResult.applied) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Orders merged')),
           );
-        } else {
+        } else if (result == TableActionResult.queued) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Merge queued or failed. Retry when online.'),
             ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Merge rejected by server. Refresh and try again.')),
           );
         }
         _resetMode();

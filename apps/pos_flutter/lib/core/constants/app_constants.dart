@@ -11,4 +11,5 @@ class AppConstants {
   static const printerConfigJsonKey = 'pt_pos_printer_config_json';
   static const lastPrintJobJsonKey = 'pt_pos_last_print_job_json';
   static const apiBaseUrlKey = 'pt_pos_api_base_url';
+  static const deviceSecretKey = 'pt_pos_device_secret';
 }

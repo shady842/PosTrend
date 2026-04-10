@@ -3,6 +3,7 @@ import '../../core/config/api_config.dart';
 import '../../core/storage/local_storage.dart';
 import '../../services/pos_realtime_sync.dart';
 import 'api_url_editor.dart';
+import 'cashier_login_screen.dart';
 import 'device_login_screen.dart';
 import 'printing/printer_settings_screen.dart';
 
@@ -41,6 +42,22 @@ class SettingsScreen extends StatelessWidget {
               },
               icon: const Icon(Icons.print),
               label: const Text('Printer settings'),
+            ),
+            const SizedBox(height: 10),
+            ElevatedButton.icon(
+              onPressed: () async {
+                await PosRealtimeSync.instance.stop();
+                final s = LocalStorage();
+                await s.saveJwt('');
+                await s.saveRefreshToken('');
+                if (!context.mounted) return;
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => const CashierLoginScreen()),
+                  (route) => false,
+                );
+              },
+              icon: const Icon(Icons.badge_outlined),
+              label: const Text('Switch cashier'),
             ),
             const SizedBox(height: 10),
             ElevatedButton.icon(

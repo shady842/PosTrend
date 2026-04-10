@@ -4,6 +4,7 @@ import '../../core/config/api_config.dart';
 import '../../core/storage/local_storage.dart';
 
 Future<void> showApiUrlEditor(BuildContext context) async {
+  final messenger = ScaffoldMessenger.of(context);
   final c = TextEditingController(text: ApiConfig.baseUrl);
   final result = await showDialog<String>(
     context: context,
@@ -40,7 +41,7 @@ Future<void> showApiUrlEditor(BuildContext context) async {
   if (result == 'reset') {
     await LocalStorage().clearApiBaseUrl();
     ApiConfig.setRuntimeBaseUrl(null);
-    ScaffoldMessenger.of(context).showSnackBar(
+    messenger.showSnackBar(
       SnackBar(content: Text('Using build default: ${ApiConfig.baseUrl}')),
     );
     return;
@@ -48,14 +49,14 @@ Future<void> showApiUrlEditor(BuildContext context) async {
   if (result == 'save') {
     final raw = c.text.trim();
     if (raw.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         const SnackBar(content: Text('URL cannot be empty')),
       );
       return;
     }
     ApiConfig.setRuntimeBaseUrl(raw);
     await LocalStorage().saveApiBaseUrl(ApiConfig.baseUrl);
-    ScaffoldMessenger.of(context).showSnackBar(
+    messenger.showSnackBar(
       SnackBar(content: Text('Saved: ${ApiConfig.baseUrl}')),
     );
   }

@@ -69,6 +69,21 @@ class LocalStorage {
     await p.remove(AppConstants.deviceDisplayNameKey);
   }
 
+  Future<void> saveDeviceSecret(String secret) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setString(AppConstants.deviceSecretKey, secret);
+  }
+
+  Future<String?> getDeviceSecret() async {
+    final p = await SharedPreferences.getInstance();
+    return p.getString(AppConstants.deviceSecretKey);
+  }
+
+  Future<void> removeDeviceSecret() async {
+    final p = await SharedPreferences.getInstance();
+    await p.remove(AppConstants.deviceSecretKey);
+  }
+
   Future<void> saveTenantJson(Map<String, dynamic> tenant) async {
     final p = await SharedPreferences.getInstance();
     await p.setString(AppConstants.tenantJsonKey, jsonEncode(tenant));
@@ -117,6 +132,7 @@ class LocalStorage {
     final p = await SharedPreferences.getInstance();
     await p.remove(AppConstants.deviceCodeKey);
     await p.remove(AppConstants.deviceDisplayNameKey);
+    await p.remove(AppConstants.deviceSecretKey);
   }
 
   /// API origin without path, e.g. `http://192.168.1.10:3000` (no `/v1`).
@@ -145,6 +161,7 @@ class LocalStorage {
     await p.remove(AppConstants.rememberDeviceKey);
     await p.remove(AppConstants.deviceCodeKey);
     await p.remove(AppConstants.deviceDisplayNameKey);
+    await p.remove(AppConstants.deviceSecretKey);
     await p.remove(AppConstants.printerConfigJsonKey);
     await p.remove(AppConstants.lastPrintJobJsonKey);
   }

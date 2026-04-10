@@ -10,6 +10,12 @@ import '../data/local/sync_outbox_repository.dart';
 import '../domain/entities/table_layout.dart';
 import 'offline_sync_engine.dart';
 
+enum TableActionResult {
+  applied,
+  queued,
+  failed,
+}
+
 class TablesLayoutService {
   TablesLayoutService(this._storage, this._appDb);
 
@@ -117,9 +123,9 @@ class TablesLayoutService {
     await OfflineSyncEngine(_storage, _appDb).runPush();
   }
 
-  Future<bool> openTable(String tableId, {int guestCount = 2}) async {
+  Future<TableActionResult> openTable(String tableId, {int guestCount = 2}) async {
     final token = await _bearer();
-    if (token == null) return false;
+    if (token == null) return TableActionResult.failed;
     try {
       final res = await http
           .post(
@@ -134,20 +140,29 @@ class TablesLayoutService {
             }),
           )
           .timeout(const Duration(seconds: 25));
-      if (res.statusCode >= 200 && res.statusCode < 300) return true;
-      return false;
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        return TableActionResult.applied;
+      }
+      if (res.statusCode >= 500 || res.statusCode == 429) {
+        await _enqueue('open_table', {
+          'table_id': tableId,
+          'guest_count': guestCount,
+        });
+        return TableActionResult.queued;
+      }
+      return TableActionResult.failed;
     } catch (_) {
       await _enqueue('open_table', {
         'table_id': tableId,
         'guest_count': guestCount,
       });
-      return false;
+      return TableActionResult.queued;
     }
   }
 
-  Future<bool> transferOrder(String orderId, String toTableId) async {
+  Future<TableActionResult> transferOrder(String orderId, String toTableId) async {
     final token = await _bearer();
-    if (token == null) return false;
+    if (token == null) return TableActionResult.failed;
     try {
       final res = await http
           .post(
@@ -162,20 +177,29 @@ class TablesLayoutService {
             }),
           )
           .timeout(const Duration(seconds: 25));
-      if (res.statusCode >= 200 && res.statusCode < 300) return true;
-      return false;
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        return TableActionResult.applied;
+      }
+      if (res.statusCode >= 500 || res.statusCode == 429) {
+        await _enqueue('transfer_table', {
+          'order_id': orderId,
+          'to_table_id': toTableId,
+        });
+        return TableActionResult.queued;
+      }
+      return TableActionResult.failed;
     } catch (_) {
       await _enqueue('transfer_table', {
         'order_id': orderId,
         'to_table_id': toTableId,
       });
-      return false;
+      return TableActionResult.queued;
     }
   }
 
-  Future<bool> mergeOrders(String sourceOrderId, String targetOrderId) async {
+  Future<TableActionResult> mergeOrders(String sourceOrderId, String targetOrderId) async {
     final token = await _bearer();
-    if (token == null) return false;
+    if (token == null) return TableActionResult.failed;
     try {
       final res = await http
           .post(
@@ -190,14 +214,23 @@ class TablesLayoutService {
             }),
           )
           .timeout(const Duration(seconds: 25));
-      if (res.statusCode >= 200 && res.statusCode < 300) return true;
-      return false;
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        return TableActionResult.applied;
+      }
+      if (res.statusCode >= 500 || res.statusCode == 429) {
+        await _enqueue('merge_orders', {
+          'source_order_id': sourceOrderId,
+          'target_order_id': targetOrderId,
+        });
+        return TableActionResult.queued;
+      }
+      return TableActionResult.failed;
     } catch (_) {
       await _enqueue('merge_orders', {
         'source_order_id': sourceOrderId,
         'target_order_id': targetOrderId,
       });
-      return false;
+      return TableActionResult.queued;
     }
   }
 }
