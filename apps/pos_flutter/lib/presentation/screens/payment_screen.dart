@@ -723,6 +723,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   Widget _buildLeftPanel(OrderPaymentSnapshot snap) {
     final due = snap.dueAmount;
     final canClose = snap.readyToClose;
+    final scheme = Theme.of(context).colorScheme;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -733,27 +734,78 @@ class _PaymentScreenState extends State<PaymentScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Order ${widget.orderId}',
-                  style: Theme.of(context).textTheme.titleMedium,
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    gradient: LinearGradient(
+                      colors: [
+                        scheme.primaryContainer.withValues(alpha: 0.95),
+                        scheme.tertiaryContainer.withValues(alpha: 0.9),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Order ${widget.orderId}',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Due: ${_fmtMoney(due)}',
+                        style: const TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text('Total: ${_fmtMoney(snap.orderTotal)}'),
+                      Text('Paid: ${_fmtMoney(snap.paidAmount)}'),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 8),
-                Text('Total: ${_fmtMoney(snap.orderTotal)}'),
-                Text('Paid: ${_fmtMoney(snap.paidAmount)}'),
-                Text(
-                  'Due: ${_fmtMoney(due)}',
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  _online ? 'Online' : 'Offline',
-                  style: TextStyle(
-                    color: _online ? Colors.green : Colors.orange,
-                    fontWeight: FontWeight.w600,
-                  ),
+                Row(
+                  children: [
+                    Icon(
+                      _online ? Icons.wifi : Icons.wifi_off,
+                      color: _online ? Colors.green : Colors.orange,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      _online ? 'Online' : 'Offline',
+                      style: TextStyle(
+                        color: _online ? Colors.green : Colors.orange,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const Spacer(),
+                    if (_payQueuePending > 0)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: scheme.errorContainer,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          'Queued: $_payQueuePending',
+                          style: TextStyle(
+                            color: scheme.onErrorContainer,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ],
             ),
@@ -764,28 +816,28 @@ class _PaymentScreenState extends State<PaymentScreen> {
           spacing: 8,
           runSpacing: 8,
           children: [
-            ChoiceChip(
+            FilterChip(
               label: const Text('Cash'),
               selected: _mode == _PayMode.cash,
               onSelected: (v) {
                 if (v) _setMode(_PayMode.cash);
               },
             ),
-            ChoiceChip(
+            FilterChip(
               label: const Text('Card'),
               selected: _mode == _PayMode.card,
               onSelected: (v) {
                 if (v) _setMode(_PayMode.card);
               },
             ),
-            ChoiceChip(
+            FilterChip(
               label: const Text('Partial'),
               selected: _mode == _PayMode.partial,
               onSelected: (v) {
                 if (v) _setMode(_PayMode.partial);
               },
             ),
-            ChoiceChip(
+            FilterChip(
               label: const Text('Split'),
               selected: _mode == _PayMode.split,
               onSelected: (v) {
@@ -794,14 +846,17 @@ class _PaymentScreenState extends State<PaymentScreen> {
             ),
             ActionChip(
               label: const Text('Discount'),
+              avatar: const Icon(Icons.percent, size: 18),
               onPressed: _busy ? null : _applyDiscountDialog,
             ),
             ActionChip(
               label: const Text('Promotion'),
+              avatar: const Icon(Icons.local_offer, size: 18),
               onPressed: _busy ? null : _applyPromotionDialog,
             ),
             ActionChip(
               label: const Text('Void order'),
+              avatar: const Icon(Icons.block, size: 18),
               onPressed: _busy ? null : _voidOrder,
             ),
           ],
@@ -934,7 +989,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         const SizedBox(height: 8),
         FilledButton.tonal(
           onPressed: !canClose || _busy ? null : _closeOrder,
-          child: const Text('Close order'),
+          child: const Text('Close check'),
         ),
         if (_busy) const LinearProgressIndicator(),
       ],
