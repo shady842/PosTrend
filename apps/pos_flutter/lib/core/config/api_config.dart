@@ -44,6 +44,11 @@ class ApiConfig {
       '$baseUrl/v1/pos/orders/transfer-table';
   static String get posOrdersMergeOrdersUrl =>
       '$baseUrl/v1/pos/orders/merge-orders';
+  static String get posOrdersApplyDiscountUrl =>
+      '$baseUrl/v1/pos/orders/apply-discount';
+  static String get posOrdersApplyPromotionUrl =>
+      '$baseUrl/v1/pos/orders/apply-promotion';
+  static String get posOrdersVoidOrderUrl => '$baseUrl/v1/pos/orders/void-order';
 
   static String posOrderUrl(String orderId) =>
       '$baseUrl/v1/pos/orders/$orderId';

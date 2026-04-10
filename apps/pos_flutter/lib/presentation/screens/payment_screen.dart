@@ -392,6 +392,152 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
   }
 
+  Future<void> _applyDiscountDialog() async {
+    final type = ValueNotifier<String>('percent');
+    final valueCtrl = TextEditingController();
+    final reasonCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Apply discount'),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ValueListenableBuilder<String>(
+                valueListenable: type,
+                builder: (_, v, __) => SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment<String>(value: 'percent', label: Text('Percent')),
+                    ButtonSegment<String>(value: 'fixed', label: Text('Amount')),
+                  ],
+                  selected: {v},
+                  onSelectionChanged: (s) {
+                    if (s.isNotEmpty) type.value = s.first;
+                  },
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: valueCtrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'Value',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: reasonCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Reason (optional)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Apply'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final value = double.tryParse(valueCtrl.text.trim()) ?? 0;
+    if (value <= 0) {
+      _snack('Enter a valid discount value');
+      return;
+    }
+    setState(() => _busy = true);
+    final applied = await _payments.applyDiscount(
+      orderId: widget.orderId,
+      type: type.value,
+      value: value,
+      reason: reasonCtrl.text.trim(),
+    );
+    if (!mounted) return;
+    setState(() => _busy = false);
+    await _reload();
+    _snack(applied ? 'Discount applied' : 'Discount failed');
+  }
+
+  Future<void> _applyPromotionDialog() async {
+    final promoCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Apply promotion'),
+        content: TextField(
+          controller: promoCtrl,
+          decoration: const InputDecoration(
+            labelText: 'Promotion ID',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Apply'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final pid = promoCtrl.text.trim();
+    if (pid.isEmpty) {
+      _snack('Enter promotion ID');
+      return;
+    }
+    setState(() => _busy = true);
+    final applied = await _payments.applyPromotion(
+      orderId: widget.orderId,
+      promotionId: pid,
+    );
+    if (!mounted) return;
+    setState(() => _busy = false);
+    await _reload();
+    _snack(applied ? 'Promotion applied' : 'Promotion failed');
+  }
+
+  Future<void> _voidOrder() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Void order'),
+        content: const Text('This will void the full order. Continue?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Void'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _busy = true);
+    final done = await _payments.voidOrder(widget.orderId);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    await _reload();
+    _snack(done ? 'Order voided' : 'Void failed');
+  }
+
   void _showReceiptPreview() {
     final order = _orderJson;
     final snap = _snap;
@@ -645,6 +791,18 @@ class _PaymentScreenState extends State<PaymentScreen> {
               onSelected: (v) {
                 if (v) _setMode(_PayMode.split);
               },
+            ),
+            ActionChip(
+              label: const Text('Discount'),
+              onPressed: _busy ? null : _applyDiscountDialog,
+            ),
+            ActionChip(
+              label: const Text('Promotion'),
+              onPressed: _busy ? null : _applyPromotionDialog,
+            ),
+            ActionChip(
+              label: const Text('Void order'),
+              onPressed: _busy ? null : _voidOrder,
             ),
           ],
         ),

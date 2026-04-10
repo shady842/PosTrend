@@ -274,6 +274,83 @@ class PaymentService {
     }
   }
 
+  Future<bool> applyDiscount({
+    required String orderId,
+    required String type,
+    required double value,
+    String? reason,
+  }) async {
+    final token = await _bearer();
+    if (token == null) return false;
+    try {
+      final body = <String, dynamic>{
+        'order_id': orderId,
+        'type': type,
+        'value': value,
+        if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
+      };
+      final res = await http
+          .post(
+            Uri.parse(ApiConfig.posOrdersApplyDiscountUrl),
+            headers: {
+              ..._jsonAuthHeaders,
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 25));
+      return res.statusCode >= 200 && res.statusCode < 300;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> applyPromotion({
+    required String orderId,
+    required String promotionId,
+  }) async {
+    final token = await _bearer();
+    if (token == null) return false;
+    try {
+      final res = await http
+          .post(
+            Uri.parse(ApiConfig.posOrdersApplyPromotionUrl),
+            headers: {
+              ..._jsonAuthHeaders,
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({
+              'order_id': orderId,
+              'promotion_id': promotionId,
+            }),
+          )
+          .timeout(const Duration(seconds: 25));
+      return res.statusCode >= 200 && res.statusCode < 300;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> voidOrder(String orderId) async {
+    final token = await _bearer();
+    if (token == null) return false;
+    try {
+      final res = await http
+          .post(
+            Uri.parse(ApiConfig.posOrdersVoidOrderUrl),
+            headers: {
+              ..._jsonAuthHeaders,
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({'order_id': orderId}),
+          )
+          .timeout(const Duration(seconds: 25));
+      return res.statusCode >= 200 && res.statusCode < 300;
+    } catch (_) {
+      return false;
+    }
+  }
+
   String newIdempotencyKey(String prefix) {
     return '${prefix}_${DateTime.now().toUtc().microsecondsSinceEpoch}';
   }
