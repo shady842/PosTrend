@@ -25,6 +25,18 @@ async function bootstrap() {
   );
   const port = Number(process.env.PORT || 3000);
   const host = process.env.HOST || "0.0.0.0";
+  // Friendly root so browsers / quick connectivity checks are not confused by 404.
+  const expressApp = app.getHttpAdapter().getInstance() as {
+    get?: (path: string, handler: (req: unknown, res: { json: (b: unknown) => void }) => void) => void;
+  };
+  expressApp.get?.("/", (_req, res) => {
+    res.json({
+      service: "postrend-api",
+      status: "ok",
+      message: "API is running. All HTTP routes are under /v1.",
+      health: "/v1/health"
+    });
+  });
   await app.listen(port, host);
 }
 

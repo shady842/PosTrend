@@ -216,7 +216,8 @@ class _DeviceLoginScreenState extends State<DeviceLoginScreen> {
             'API base URL',
             hint: 'http://192.168.1.10:3000',
           ).copyWith(
-            helperText: 'No /v1 — same URL that works for …/v1/health in the browser',
+            helperText:
+                'No /v1 suffix. On a phone use your PC Wi‑Fi IP (e.g. http://192.168.1.10:3000), not localhost — test …/v1/health in the phone browser first',
           ),
         ),
         const SizedBox(height: 10),

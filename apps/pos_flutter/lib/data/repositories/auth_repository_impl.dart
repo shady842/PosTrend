@@ -39,7 +39,9 @@ class AuthRepositoryImpl implements AuthRepository {
       throw Exception(
         'Cannot reach API at ${ApiConfig.baseUrl}\n'
         '${e.message.isNotEmpty ? e.message : (e.osError?.message ?? "network error")}\n'
-        'Same Wi‑Fi as your server? Firewall allows port 3000?',
+        'On a phone, localhost means the phone itself — use your PC\'s LAN IP.\n'
+        'Same Wi‑Fi as the PC? Windows Firewall inbound rule for port 3000?\n'
+        'Test in the phone browser: http://YOUR_PC_IP:3000/v1/health',
       );
     }
   }
