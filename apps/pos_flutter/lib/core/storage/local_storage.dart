@@ -9,9 +9,19 @@ class LocalStorage {
     await p.setString(AppConstants.jwtKey, token);
   }
 
+  Future<void> saveDeviceAuthToken(String token) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setString(AppConstants.deviceAuthTokenKey, token);
+  }
+
   Future<String?> getJwt() async {
     final p = await SharedPreferences.getInstance();
     return p.getString(AppConstants.jwtKey);
+  }
+
+  Future<String?> getDeviceAuthToken() async {
+    final p = await SharedPreferences.getInstance();
+    return p.getString(AppConstants.deviceAuthTokenKey);
   }
 
   Future<void> saveRefreshToken(String token) async {
@@ -84,6 +94,11 @@ class LocalStorage {
     await p.remove(AppConstants.deviceSecretKey);
   }
 
+  Future<void> removeDeviceAuthToken() async {
+    final p = await SharedPreferences.getInstance();
+    await p.remove(AppConstants.deviceAuthTokenKey);
+  }
+
   Future<void> saveTenantJson(Map<String, dynamic> tenant) async {
     final p = await SharedPreferences.getInstance();
     await p.setString(AppConstants.tenantJsonKey, jsonEncode(tenant));
@@ -133,6 +148,7 @@ class LocalStorage {
     await p.remove(AppConstants.deviceCodeKey);
     await p.remove(AppConstants.deviceDisplayNameKey);
     await p.remove(AppConstants.deviceSecretKey);
+    await p.remove(AppConstants.deviceAuthTokenKey);
   }
 
   /// API origin without path, e.g. `http://192.168.1.10:3000` (no `/v1`).
@@ -162,6 +178,7 @@ class LocalStorage {
     await p.remove(AppConstants.deviceCodeKey);
     await p.remove(AppConstants.deviceDisplayNameKey);
     await p.remove(AppConstants.deviceSecretKey);
+    await p.remove(AppConstants.deviceAuthTokenKey);
     await p.remove(AppConstants.printerConfigJsonKey);
     await p.remove(AppConstants.lastPrintJobJsonKey);
   }

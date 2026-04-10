@@ -48,7 +48,12 @@ class SettingsScreen extends StatelessWidget {
               onPressed: () async {
                 await PosRealtimeSync.instance.stop();
                 final s = LocalStorage();
-                await s.saveJwt('');
+                final deviceToken = await s.getDeviceAuthToken();
+                if (deviceToken != null && deviceToken.isNotEmpty) {
+                  await s.saveJwt(deviceToken);
+                } else {
+                  await s.saveJwt('');
+                }
                 await s.saveRefreshToken('');
                 if (!context.mounted) return;
                 Navigator.of(context).pushAndRemoveUntil(

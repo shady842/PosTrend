@@ -95,6 +95,7 @@ class AuthRepositoryImpl implements AuthRepository {
     }
 
     await _storage.saveJwt(token);
+    await _storage.saveDeviceAuthToken(token);
     if (refresh.isNotEmpty) {
       await _storage.saveRefreshToken(refresh);
     }

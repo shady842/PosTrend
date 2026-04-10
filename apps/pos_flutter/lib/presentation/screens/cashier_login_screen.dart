@@ -25,12 +25,19 @@ class _CashierLoginScreenState extends State<CashierLoginScreen> {
   Future<void> _login() async {
     setState(() => _loading = true);
     try {
+      final storage = LocalStorage();
+      final deviceToken =
+          await storage.getDeviceAuthToken() ?? await storage.getJwt() ?? '';
+      if (deviceToken.isEmpty) {
+        throw Exception('Missing device session. Re-pair this device.');
+      }
       final res = await http
           .post(
-            Uri.parse('${ApiConfig.baseUrl}/v1/auth/login'),
-            headers: const {
+            Uri.parse('${ApiConfig.baseUrl}/v1/pos/cashier-login'),
+            headers: {
               'Accept': 'application/json',
               'Content-Type': 'application/json',
+              'Authorization': 'Bearer $deviceToken',
             },
             body: jsonEncode({
               'email': _email.text.trim(),
@@ -53,7 +60,7 @@ class _CashierLoginScreenState extends State<CashierLoginScreen> {
       if (token.isEmpty) {
         throw Exception('Missing access token in login response.');
       }
-      final storage = LocalStorage();
+      await storage.saveDeviceAuthToken(deviceToken);
       await storage.saveJwt(token);
       if (refresh.isNotEmpty) {
         await storage.saveRefreshToken(refresh);

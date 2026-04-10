@@ -29,3 +29,12 @@ export class DeviceLoginDto {
   @IsString()
   device_name?: string;
 }
+
+export class CashierLoginDto {
+  @IsEmail()
+  email!: string;
+
+  @IsString()
+  @MinLength(6)
+  password!: string;
+}

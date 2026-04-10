@@ -149,6 +149,7 @@ model Device {
   createdAt  DateTime @default(now())
   branch     Branch   @relation(fields: [branchId], references: [id])
   sessions   DeviceSession[]
+  cashierSessions PosCashierSession[]
 }
 
 model User {
@@ -163,6 +164,7 @@ model User {
   createdAt  DateTime @default(now())
   tenant     Tenant   @relation(fields: [tenantId], references: [id])
   roleAssignments UserRoleAssignment[]
+  cashierSessions PosCashierSession[]
 }
 
 model SuperAdminUser {
@@ -333,6 +335,26 @@ model DeviceSession {
   expiresAt       DateTime
   revokedAt       DateTime?
   device          Device   @relation(fields: [deviceId], references: [id])
+}
+
+model PosCashierSession {
+  id            String   @id @default(uuid())
+  tenantId      String
+  branchId      String
+  conceptId     String?
+  deviceId      String
+  cashierUserId String
+  status        String   @default("ACTIVE")
+  startedAt     DateTime @default(now())
+  endedAt       DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  device        Device   @relation(fields: [deviceId], references: [id])
+  cashier       User     @relation(fields: [cashierUserId], references: [id])
+
+  @@index([tenantId, branchId, status])
+  @@index([deviceId, status])
+  @@map("pos_cashier_sessions")
 }
 
 model MenuItem {

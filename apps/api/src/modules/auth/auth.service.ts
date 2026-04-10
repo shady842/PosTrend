@@ -1,7 +1,8 @@
 import { Injectable } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
+import { TenantContext } from "./types/tenant-context.type";
 import { SaasService } from "../saas/saas.service";
-import { DeviceLoginDto, LoginDto, RefreshDto } from "./dto/auth.dto";
+import { CashierLoginDto, DeviceLoginDto, LoginDto, RefreshDto } from "./dto/auth.dto";
 
 @Injectable()
 export class AuthService {
@@ -16,6 +17,14 @@ export class AuthService {
 
   deviceLogin(dto: DeviceLoginDto) {
     return this.saasService.deviceLogin(dto.device_code, dto.device_secret, dto.device_name);
+  }
+
+  cashierLogin(ctx: TenantContext, dto: CashierLoginDto) {
+    return this.saasService.cashierLoginForDevice(ctx, dto.email, dto.password);
+  }
+
+  cashierLogout(ctx: TenantContext) {
+    return this.saasService.cashierLogoutForDevice(ctx);
   }
 
   refresh(dto: RefreshDto) {

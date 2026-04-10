@@ -285,6 +285,70 @@ export class SaasService {
     });
   }
 
+  async cashierLoginForDevice(ctx: TenantContext, email: string, password: string) {
+    if (!ctx.sub?.startsWith("device:")) {
+      throw new UnauthorizedException("Device token required");
+    }
+    const deviceId = ctx.sub.slice("device:".length);
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user || !user.passwordHash || !this.verifySecret(password, user.passwordHash)) {
+      throw new UnauthorizedException("Invalid credentials");
+    }
+    if (user.tenantId !== ctx.tenant_id) {
+      throw new UnauthorizedException("User does not belong to this tenant");
+    }
+    if (user.status !== "active") {
+      throw new UnauthorizedException("User is not active");
+    }
+    await this.assertTenantAccessAllowed(user.tenantId);
+
+    const assignment = await this.prisma.userRoleAssignment.findFirst({
+      where: { userId: user.id },
+      include: { role: true }
+    });
+    const role = assignment?.role.code || "admin";
+    const conceptId = user.conceptId || assignment?.conceptId || ctx.concept_id || "";
+    const branchId = user.branchId || assignment?.branchId || ctx.branch_id || "";
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.posCashierSession.updateMany({
+        where: { deviceId, status: "ACTIVE" },
+        data: { status: "ENDED", endedAt: new Date() }
+      });
+      await tx.posCashierSession.create({
+        data: {
+          tenantId: ctx.tenant_id,
+          branchId: ctx.branch_id,
+          conceptId: ctx.concept_id,
+          deviceId,
+          cashierUserId: user.id,
+          status: "ACTIVE",
+          startedAt: new Date()
+        }
+      });
+    });
+
+    return this.issueUserTokens({
+      userId: user.id,
+      role,
+      tenantId: user.tenantId,
+      conceptId,
+      branchId
+    });
+  }
+
+  async cashierLogoutForDevice(ctx: TenantContext) {
+    if (!ctx.sub?.startsWith("device:")) {
+      throw new UnauthorizedException("Device token required");
+    }
+    const deviceId = ctx.sub.slice("device:".length);
+    await this.prisma.posCashierSession.updateMany({
+      where: { deviceId, status: "ACTIVE" },
+      data: { status: "ENDED", endedAt: new Date() }
+    });
+    return { ok: true };
+  }
+
   async tenantMe(ctx: TenantContext) {
     return this.prisma.tenant.findUnique({
       where: { id: ctx.tenant_id }
