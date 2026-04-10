@@ -1097,8 +1097,11 @@ class _OrdersScreenState extends State<OrdersScreen> {
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          SafeArea(
+            top: false,
+            left: false,
+            right: false,
+            minimum: const EdgeInsets.fromLTRB(12, 0, 12, 12),
             child: Row(
               children: [
                 Expanded(

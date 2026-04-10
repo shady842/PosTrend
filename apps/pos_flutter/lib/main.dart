@@ -15,5 +15,7 @@ Future<void> main() async {
     DeviceOrientation.landscapeRight,
     DeviceOrientation.portraitUp,
   ]);
+  // POS should run fullscreen so Android system bars do not cover actions.
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   runApp(const PosTrendPosApp());
 }
