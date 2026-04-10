@@ -9,6 +9,7 @@ import '../../domain/entities/table_layout.dart';
 import '../../services/pos_realtime_sync.dart';
 import '../../services/tables_layout_service.dart';
 import 'orders_screen.dart';
+import 'payment_screen.dart';
 
 enum _ToolbarMode {
   normal,
@@ -29,6 +30,7 @@ class _TablesScreenState extends State<TablesScreen> {
   final _appDb = AppDatabase();
   late final TablesLayoutService _tables = TablesLayoutService(LocalStorage(), _appDb);
   final _connectivity = ConnectivityService();
+  StreamSubscription<PosRealtimeEvent>? _orderEventsSub;
 
   BranchTableLayout? _layout;
   String? _floorId;
@@ -44,6 +46,15 @@ class _TablesScreenState extends State<TablesScreen> {
   void initState() {
     super.initState();
     PosRealtimeSync.instance.addListener(_onRealtime);
+    _orderEventsSub = PosRealtimeSync.instance.orderEvents.listen((event) {
+      if (!mounted || event.orderId == null) return;
+      if (event.name != 'item.ready' && event.name != 'kds.updated') return;
+      final table = _findTableByOrderId(event.orderId!);
+      final label = table?.name ?? 'Table';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$label has items ready to serve')),
+      );
+    });
     _connectivity.watchOnline().listen((o) {
       if (!mounted) return;
       setState(() => _online = o);
@@ -55,7 +66,19 @@ class _TablesScreenState extends State<TablesScreen> {
   @override
   void dispose() {
     PosRealtimeSync.instance.removeListener(_onRealtime);
+    _orderEventsSub?.cancel();
     super.dispose();
+  }
+
+  DiningTableTile? _findTableByOrderId(String orderId) {
+    final l = _layout;
+    if (l == null) return null;
+    for (final s in l.sections) {
+      for (final t in s.tables) {
+        if (t.activeOrderId == orderId) return t;
+      }
+    }
+    return null;
   }
 
   void _onRealtime() {
@@ -232,6 +255,18 @@ class _TablesScreenState extends State<TablesScreen> {
                   ),
                   onPressed: () {
                     Navigator.pop(ctx);
+                    _openCheck(orderId);
+                  },
+                  icon: const Icon(Icons.receipt_long),
+                  label: const Text('Open check'),
+                ),
+                const SizedBox(height: 10),
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(ctx);
                     setState(() {
                       _mode = _ToolbarMode.transferPickTo;
                       _transferOrderId = orderId;
@@ -273,6 +308,14 @@ class _TablesScreenState extends State<TablesScreen> {
         );
       },
     );
+  }
+
+  Future<void> _openCheck(String orderId) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => PaymentScreen(orderId: orderId)),
+    );
+    if (!mounted) return;
+    await _refresh();
   }
 
   Future<void> _splitOrderFlow(String orderId, String tableName) async {
@@ -505,7 +548,7 @@ class _TablesScreenState extends State<TablesScreen> {
     if (vis == TableVisualStatus.available || table.activeOrderId == null) {
       await _openTableFlow(table);
     } else {
-      await _occupiedSheet(table);
+      await _openCheck(table.activeOrderId!);
     }
   }
 
@@ -761,6 +804,7 @@ class _TablesScreenState extends State<TablesScreen> {
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: () => _onTableTap(t),
+            onLongPress: t.activeOrderId == null ? null : () => _occupiedSheet(t),
             child: Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(18),
