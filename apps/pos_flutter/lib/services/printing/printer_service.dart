@@ -156,6 +156,12 @@ class PrinterService {
     return int.tryParse(m.group(1) ?? '');
   }
 
+  static int? _toInt(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.toInt();
+    return int.tryParse(v.toString());
+  }
+
   Future<List<int>> _buildOrderReceiptBytes({
     required PrinterConfig cfg,
     required String orderId,
@@ -431,9 +437,9 @@ class PrinterService {
       return printOrderReceipt(
         orderId: job['order_id']?.toString() ?? 'N/A',
         lines: lines,
-        subtotalCents: (job['subtotal_cents'] as num?)?.toInt() ?? 0,
-        discountCents: (job['discount_cents'] as num?)?.toInt() ?? 0,
-        totalCents: (job['total_cents'] as num?)?.toInt() ?? 0,
+        subtotalCents: _toInt(job['subtotal_cents']) ?? 0,
+        discountCents: _toInt(job['discount_cents']) ?? 0,
+        totalCents: _toInt(job['total_cents']) ?? 0,
       );
     }
     if (type == 'kitchen') {
@@ -442,8 +448,8 @@ class PrinterService {
         final m = Map<String, dynamic>.from(e as Map);
         return KdsItemLine(
           name: m['name']?.toString() ?? 'Item',
-          qty: (m['qty'] as num?)?.toDouble() ?? 1,
-          seatNo: (m['seat_no'] as num?)?.toInt(),
+          qty: (m['qty'] is num) ? (m['qty'] as num).toDouble() : (double.tryParse('${m['qty']}') ?? 1),
+          seatNo: _toInt(m['seat_no']),
         );
       }).toList();
       return printKitchenTicket(

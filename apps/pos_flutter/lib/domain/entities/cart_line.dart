@@ -106,6 +106,11 @@ class CartLine {
       };
 
   static CartLine fromMap(Map<String, dynamic> m) {
+    int? toInt(dynamic v) {
+      if (v == null) return null;
+      if (v is num) return v.toInt();
+      return int.tryParse(v.toString());
+    }
     final mods = (m['modifiers'] as List<dynamic>? ?? [])
         .map((e) => LineModifier.fromMap(Map<String, dynamic>.from(e as Map)))
         .toList();
@@ -113,14 +118,14 @@ class CartLine {
       lineId: m['line_id'] as String,
       itemId: m['item_id'] as String,
       name: m['name'] as String,
-      unitPriceCents: (m['unit_price_cents'] as num).toInt(),
-      qty: (m['qty'] as num?)?.toInt() ?? 1,
+      unitPriceCents: toInt(m['unit_price_cents']) ?? 0,
+      qty: toInt(m['qty']) ?? 1,
       notes: m['notes'] as String? ?? '',
-      discountCents: (m['discount_cents'] as num?)?.toInt() ?? 0,
+      discountCents: toInt(m['discount_cents']) ?? 0,
       modifiers: mods,
       variantId: m['variant_id'] as String?,
       variantName: m['variant_name'] as String?,
-      seatNo: (m['seat_no'] as num?)?.toInt(),
+      seatNo: toInt(m['seat_no']),
     );
   }
 

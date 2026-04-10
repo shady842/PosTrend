@@ -70,6 +70,12 @@ class PosOrderService {
     return ((double.tryParse('$value') ?? 0) * 100).round();
   }
 
+  int? _toInt(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
+  }
+
   PosOrderSnapshot _parseOrder(Map<String, dynamic> map) {
     final rawItems = (map['items'] as List<dynamic>? ?? const []);
     final items = rawItems
@@ -83,7 +89,7 @@ class PosOrderService {
             lineTotal: _moneyToCents(x['lineTotal']),
             status: (x['status'] ?? '').toString(),
             notes: (x['notes'] ?? '').toString(),
-            seatNo: ((x['seatNo'] as num?) ?? num.tryParse('${x['seatNo']}'))?.toInt(),
+            seatNo: _toInt(x['seatNo'] ?? x['seat_no']),
           ),
         )
         .toList();
