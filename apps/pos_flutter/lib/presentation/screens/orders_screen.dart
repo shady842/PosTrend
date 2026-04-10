@@ -615,20 +615,39 @@ class _OrdersScreenState extends State<OrdersScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          Container(
+            margin: const EdgeInsets.fromLTRB(10, 10, 10, 6),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              gradient: LinearGradient(
+                colors: [
+                  scheme.primaryContainer.withValues(alpha: 0.95),
+                  scheme.tertiaryContainer.withValues(alpha: 0.9),
+                ],
+              ),
+            ),
             child: Row(
               children: [
                 Text(
                   'Cart',
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w900,
                       ),
                 ),
                 const Spacer(),
-                Text(
-                  '${_lines.length} ${_lines.length == 1 ? 'item' : 'items'}',
-                  style: Theme.of(context).textTheme.titleMedium,
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: scheme.surface.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                  child: Text(
+                    '${_lines.length} ${_lines.length == 1 ? 'item' : 'items'}',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
                 ),
               ],
             ),
@@ -684,16 +703,37 @@ class _OrdersScreenState extends State<OrdersScreen> {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            child: FilledButton.icon(
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(54),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(54),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    onPressed: _syncBusy ? null : _syncNow,
+                    icon: const Icon(Icons.cloud_upload),
+                    label: const Text('Sync now'),
+                  ),
                 ),
-              ),
-              onPressed: _lines.isEmpty ? null : _queueForSync,
-              icon: const Icon(Icons.save_alt),
-              label: const Text('Save order (sync later)'),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(54),
+                      backgroundColor: scheme.tertiary,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    onPressed: _lines.isEmpty ? null : _queueForSync,
+                    icon: const Icon(Icons.save_alt),
+                    label: const Text('Save order'),
+                  ),
+                ),
+              ],
             ),
           ),
         ],

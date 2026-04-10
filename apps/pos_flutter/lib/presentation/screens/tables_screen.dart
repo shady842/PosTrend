@@ -798,6 +798,7 @@ class _TablesScreenState extends State<TablesScreen> {
         final t = tables[i];
         final v = visualStatusFor(t);
         final bg = _statusColor(v, context);
+        final fill = bg.withValues(alpha: 0.14);
         return Material(
           color: Theme.of(context).colorScheme.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(18),
@@ -808,6 +809,11 @@ class _TablesScreenState extends State<TablesScreen> {
             child: Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(18),
+                gradient: LinearGradient(
+                  colors: [fill, Theme.of(context).colorScheme.surfaceContainerHigh],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
                 border: Border.all(color: bg, width: 4),
               ),
               padding: const EdgeInsets.all(12),
@@ -874,7 +880,7 @@ class _TablesScreenState extends State<TablesScreen> {
                       );
                     },
               icon: const Icon(Icons.drive_file_move),
-              label: const Text('Transfer'),
+              label: const Text('Transfer order'),
             ),
           ),
           const SizedBox(width: 10),
@@ -899,7 +905,7 @@ class _TablesScreenState extends State<TablesScreen> {
                       );
                     },
               icon: const Icon(Icons.merge_type),
-              label: const Text('Merge'),
+              label: const Text('Merge checks'),
             ),
           ),
         ],
