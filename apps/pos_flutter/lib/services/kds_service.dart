@@ -50,13 +50,9 @@ class KdsTicket {
     final items = <KdsItemLine>[];
     if (orderItems is List) {
       for (final raw in orderItems) {
-        if (raw is! Map) continue;
-        final m = Map<String, dynamic>.from(raw);
-        final name = (m['nameSnapshot']?.toString() ??
-                m['name']?.toString() ??
-                m['name']?.toString() ??
-                'Item')
-            .trim();
+        final m = _asStringKeyedMap(raw);
+        if (m == null) continue;
+        final name = (m['nameSnapshot']?.toString() ?? m['name']?.toString() ?? '').trim();
         final safeName = name.isEmpty ? 'Item' : name;
         final qty = (m['qty'] is num)
             ? (m['qty'] as num).toDouble()
@@ -81,6 +77,15 @@ class KdsTicket {
       createdAt: createdAt,
       items: items,
     );
+  }
+
+  static Map<String, dynamic>? _asStringKeyedMap(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is Map) {
+      return raw.map((k, v) => MapEntry(k.toString(), v));
+    }
+    return null;
   }
 
   static int? _seatNoFromAny(dynamic seatNo, dynamic seatNoSnake, String? notes) {

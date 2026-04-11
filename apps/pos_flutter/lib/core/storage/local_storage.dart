@@ -167,6 +167,26 @@ class LocalStorage {
     await p.remove(AppConstants.apiBaseUrlKey);
   }
 
+  Future<void> setVoiceCommandsEnabled(bool value) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setBool(AppConstants.voiceCommandsEnabledKey, value);
+  }
+
+  Future<bool> getVoiceCommandsEnabled() async {
+    final p = await SharedPreferences.getInstance();
+    return p.getBool(AppConstants.voiceCommandsEnabledKey) ?? false;
+  }
+
+  Future<void> saveVoiceShortcutsLines(String lines) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setString(AppConstants.voiceShortcutsLinesKey, lines);
+  }
+
+  Future<String> getVoiceShortcutsLines() async {
+    final p = await SharedPreferences.getInstance();
+    return p.getString(AppConstants.voiceShortcutsLinesKey) ?? '';
+  }
+
   Future<void> clearSession() async {
     final p = await SharedPreferences.getInstance();
     await p.remove(AppConstants.jwtKey);

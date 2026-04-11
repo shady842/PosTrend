@@ -12,6 +12,67 @@ export class KdsService {
     private readonly realtimeGateway: RealtimeGateway
   ) {}
 
+  private async ensureFallbackStationId(ctx: TenantContext, branchId: string): Promise<string> {
+    let fallback = await this.prisma.kitchenStation.findFirst({
+      where: { tenantId: ctx.tenant_id, branchId },
+      orderBy: { name: "asc" }
+    });
+    if (!fallback) {
+      fallback = await this.prisma.kitchenStation.create({
+        data: {
+          tenantId: ctx.tenant_id,
+          branchId,
+          name: "Main Kitchen"
+        }
+      });
+    }
+    return fallback.id;
+  }
+
+  private resolveItemStationFromRuleMaps(
+    item: {
+      menuItemId: string;
+      menuItem: { categoryId: string | null; kitchenStationId: string | null };
+    },
+    byMenuItem: Map<string, string>,
+    byCategory: Map<string, string>
+  ): string | null {
+    const fromItem = byMenuItem.get(item.menuItemId);
+    if (fromItem) return fromItem;
+    const cat = item.menuItem.categoryId;
+    if (cat) {
+      const fromCat = byCategory.get(cat);
+      if (fromCat) return fromCat;
+    }
+    return item.menuItem.kitchenStationId || null;
+  }
+
+  private async loadKitchenRoutingMaps(
+    branchId: string,
+    menuItemIds: string[],
+    categoryIds: string[]
+  ): Promise<{ byMenuItem: Map<string, string>; byCategory: Map<string, string> }> {
+    const uniqMenu = [...new Set(menuItemIds.filter(Boolean))];
+    const uniqCat = [...new Set(categoryIds.filter(Boolean))];
+    if (uniqMenu.length === 0 && uniqCat.length === 0) {
+      return { byMenuItem: new Map(), byCategory: new Map() };
+    }
+    const rules = await this.prisma.kitchenRoutingRule.findMany({
+      where: {
+        branchId,
+        OR: [{ menuItemId: { in: uniqMenu } }, { categoryId: { in: uniqCat } }]
+      },
+      orderBy: { id: "asc" }
+    });
+    const byMenuItem = new Map<string, string>();
+    const byCategory = new Map<string, string>();
+    for (const r of rules) {
+      if (r.menuItemId && !byMenuItem.has(r.menuItemId)) byMenuItem.set(r.menuItemId, r.stationId);
+      if (r.categoryId && !byCategory.has(r.categoryId)) byCategory.set(r.categoryId, r.stationId);
+    }
+    return { byMenuItem, byCategory };
+  }
+
   async createTicket(ctx: TenantContext, dto: CreateKdsTicketDto) {
     const order = await this.prisma.order.findFirst({
       where: {
@@ -35,72 +96,20 @@ export class KdsService {
       throw new NotFoundException("No items to send to kitchen");
     }
 
-    const stationIds = new Set<string>();
-    if (dto.station_id) {
-      stationIds.add(dto.station_id);
-    } else {
-      for (const item of sourceItems) {
-        const itemRule = await this.prisma.kitchenRoutingRule.findFirst({
-          where: { branchId: ctx.branch_id, menuItemId: item.menuItemId }
-        });
-        if (itemRule?.stationId) {
-          stationIds.add(itemRule.stationId);
-          continue;
-        }
-        const categoryRule = item.menuItem.categoryId
-          ? await this.prisma.kitchenRoutingRule.findFirst({
-              where: { branchId: ctx.branch_id, categoryId: item.menuItem.categoryId }
-            })
-          : null;
-        if (categoryRule?.stationId) {
-          stationIds.add(categoryRule.stationId);
-          continue;
-        }
-        if (item.menuItem.kitchenStationId) {
-          stationIds.add(item.menuItem.kitchenStationId);
-        }
-      }
-    }
-
-    const ensureFallbackStation = async () => {
-      let fallback = await this.prisma.kitchenStation.findFirst({
-        where: { tenantId: ctx.tenant_id, branchId: ctx.branch_id },
-        orderBy: { name: "asc" }
-      });
-      if (!fallback) {
-        fallback = await this.prisma.kitchenStation.create({
-          data: {
-            tenantId: ctx.tenant_id,
-            branchId: ctx.branch_id,
-            name: "Main Kitchen"
-          }
-        });
-      }
-      return fallback.id;
-    };
-
-    // Keep only valid station IDs for this tenant/branch to avoid FK failures.
-    const requestedStationIds = [...stationIds];
-    const validStations = requestedStationIds.length
-      ? await this.prisma.kitchenStation.findMany({
-          where: {
-            id: { in: requestedStationIds },
-            tenantId: ctx.tenant_id,
-            branchId: ctx.branch_id
-          },
-          select: { id: true }
-        })
-      : [];
-    const validStationIds = new Set(validStations.map((s) => s.id));
-    stationIds.clear();
-    for (const id of validStationIds) stationIds.add(id);
-
-    if (stationIds.size === 0) {
-      stationIds.add(await ensureFallbackStation());
-    }
+    const branchId = order.branchId;
+    const menuItemIds = sourceItems.map((x) => x.menuItemId);
+    const categoryIds = sourceItems.map((x) => x.menuItem.categoryId).filter((x): x is string => Boolean(x));
+    const { byMenuItem, byCategory } = await this.loadKitchenRoutingMaps(branchId, menuItemIds, categoryIds);
+    const fallbackId = await this.ensureFallbackStationId(ctx, branchId);
 
     const tickets = [];
-    for (const stationId of stationIds) {
+
+    if (dto.station_id?.trim()) {
+      const stationId = dto.station_id.trim();
+      const stationOk = await this.prisma.kitchenStation.findFirst({
+        where: { id: stationId, tenantId: ctx.tenant_id, branchId }
+      });
+      if (!stationOk) throw new NotFoundException("Station not found");
       const ticket = await this.prisma.kdsTicket.create({
         data: {
           orderId: order.id,
@@ -109,7 +118,6 @@ export class KdsService {
         }
       });
       tickets.push(ticket);
-
       await this.prisma.kdsEvent.create({
         data: {
           ticketId: ticket.id,
@@ -117,11 +125,63 @@ export class KdsService {
           payload: {
             order_id: order.id,
             station_id: stationId,
-            order_item_ids: sourceItems.map((x) => x.id)
+            order_item_ids: sourceItems.map((x) => x.id),
+            station_scope: "explicit"
           },
           status: "ack_pending"
         }
       });
+    } else {
+      const effectiveStationByItemId = new Map<string, string>();
+      for (const it of sourceItems) {
+        let sid = this.resolveItemStationFromRuleMaps(it, byMenuItem, byCategory);
+        if (!sid) sid = fallbackId;
+        effectiveStationByItemId.set(it.id, sid);
+      }
+      const stationIds = new Set(effectiveStationByItemId.values());
+      const validStations = await this.prisma.kitchenStation.findMany({
+        where: {
+          id: { in: [...stationIds] },
+          tenantId: ctx.tenant_id,
+          branchId
+        },
+        select: { id: true }
+      });
+      const validSet = new Set(validStations.map((s) => s.id));
+      for (const it of sourceItems) {
+        const sid = effectiveStationByItemId.get(it.id)!;
+        if (!validSet.has(sid)) {
+          effectiveStationByItemId.set(it.id, fallbackId);
+        }
+      }
+      const finalStationIds = new Set(effectiveStationByItemId.values());
+      for (const stationId of finalStationIds) {
+        const orderItemIds = sourceItems
+          .filter((it) => effectiveStationByItemId.get(it.id) === stationId)
+          .map((it) => it.id);
+        if (orderItemIds.length === 0) continue;
+        const ticket = await this.prisma.kdsTicket.create({
+          data: {
+            orderId: order.id,
+            stationId,
+            status: "pending"
+          }
+        });
+        tickets.push(ticket);
+        await this.prisma.kdsEvent.create({
+          data: {
+            ticketId: ticket.id,
+            eventType: "ticket_created",
+            payload: {
+              order_id: order.id,
+              station_id: stationId,
+              order_item_ids: orderItemIds,
+              station_scope: "routed"
+            },
+            status: "ack_pending"
+          }
+        });
+      }
     }
 
     if (tickets.length > 0) {
@@ -148,13 +208,82 @@ export class KdsService {
       },
       include: {
         order: {
-          include: { items: true, tableSession: true }
+          select: {
+            id: true,
+            orderNumber: true,
+            orderType: true,
+            tableSession: true
+          }
         },
         station: true
       },
       orderBy: { createdAt: "asc" }
     });
     if (tickets.length === 0) return [];
+
+    const orderIds = [...new Set(tickets.map((t) => t.orderId))];
+    const ticketIds = tickets.map((t) => t.id);
+
+    const [events, allOrderItems] = await Promise.all([
+      this.prisma.kdsEvent.findMany({
+        where: { ticketId: { in: ticketIds }, eventType: "ticket_created" },
+        orderBy: { createdAt: "asc" }
+      }),
+      this.prisma.orderItem.findMany({
+        where: {
+          orderId: { in: orderIds },
+          tenantId: ctx.tenant_id,
+          branchId: ctx.branch_id
+        },
+        include: {
+          menuItem: { select: { name: true, categoryId: true, kitchenStationId: true } }
+        },
+        orderBy: { createdAt: "asc" }
+      })
+    ]);
+
+    const ticketMetaById = new Map<string, { order_item_ids: string[]; station_scope?: string }>();
+    for (const ev of events) {
+      const p = ev.payload as Record<string, unknown> | null;
+      const raw = p?.order_item_ids;
+      const ids = Array.isArray(raw)
+        ? raw.map((x) => String(x)).filter((s) => s.length > 0)
+        : [];
+      const scope = p?.station_scope != null ? String(p.station_scope) : undefined;
+      ticketMetaById.set(ev.ticketId, { order_item_ids: ids, station_scope: scope });
+    }
+
+    const branchId = ctx.branch_id;
+    const menuItemIds = [...new Set(allOrderItems.map((i) => i.menuItemId))];
+    const categoryIds = [
+      ...new Set(
+        allOrderItems.map((i) => i.menuItem?.categoryId).filter((x): x is string => Boolean(x))
+      )
+    ];
+    const routeMaps = await this.loadKitchenRoutingMaps(branchId, menuItemIds, categoryIds);
+    const fallbackStationId = await this.ensureFallbackStationId(ctx, branchId);
+    const resolveLineStation = (it: (typeof allOrderItems)[number]) => {
+      const sid = this.resolveItemStationFromRuleMaps(
+        {
+          menuItemId: it.menuItemId,
+          menuItem: {
+            categoryId: it.menuItem?.categoryId ?? null,
+            kitchenStationId: it.menuItem?.kitchenStationId ?? null
+          }
+        },
+        routeMaps.byMenuItem,
+        routeMaps.byCategory
+      );
+      return sid || fallbackStationId;
+    };
+
+    const itemsByOrder = new Map<string, typeof allOrderItems>();
+    for (const it of allOrderItems) {
+      if (String(it.status ?? "").toUpperCase() === "VOIDED") continue;
+      const list = itemsByOrder.get(it.orderId) ?? [];
+      list.push(it);
+      itemsByOrder.set(it.orderId, list);
+    }
 
     const tableIds = [
       ...new Set(
@@ -183,6 +312,16 @@ export class KdsService {
       const tableId = t.order.tableSession?.tableId || null;
       const table = tableId ? tableMap.get(tableId) : null;
       const sectionName = table?.floorId ? floorMap.get(table.floorId) || null : null;
+      const pool = itemsByOrder.get(t.orderId) ?? [];
+      const meta = ticketMetaById.get(t.id);
+      const isExplicit = meta?.station_scope === "explicit";
+      let lines = pool;
+      if (isExplicit && (meta?.order_item_ids?.length ?? 0) > 0) {
+        const want = new Set(meta!.order_item_ids);
+        lines = pool.filter((i) => want.has(i.id));
+      } else {
+        lines = pool.filter((i) => resolveLineStation(i) === t.stationId);
+      }
       return {
         id: t.id,
         order_id: t.orderId,
@@ -198,16 +337,17 @@ export class KdsService {
         status: t.status,
         created_at: t.createdAt.toISOString(),
         station: { id: t.station.id, name: t.station.name },
-        items: t.order.items
-          .filter((i) => i.status !== "VOIDED")
-          .map((i) => ({
-            id: i.id,
-            name: (i.nameSnapshot || "").trim() || "Item",
-            qty: Number(i.qty),
-            seat_no: i.seatNo,
-            notes: i.notes || null,
-            kitchen_status: i.kitchenStatus
-          }))
+        items: lines.map((i) => ({
+          id: i.id,
+          name:
+            (i.nameSnapshot || "").trim() ||
+            (i.menuItem?.name || "").trim() ||
+            "Item",
+          qty: Number(i.qty),
+          seat_no: i.seatNo,
+          notes: i.notes || null,
+          kitchen_status: i.kitchenStatus
+        }))
       };
     });
   }
