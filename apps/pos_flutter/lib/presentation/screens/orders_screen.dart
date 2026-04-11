@@ -29,10 +29,13 @@ class OrdersScreen extends StatefulWidget {
     super.key,
     this.orderId,
     this.mode = OrdersMode.takeawayDraft,
+    this.voiceMenuSearch,
   });
 
   final String? orderId;
   final OrdersMode mode;
+  /// When set (e.g. from voice: “punch a burger”), pre-fills menu search on open.
+  final String? voiceMenuSearch;
 
   @override
   State<OrdersScreen> createState() => _OrdersScreenState();
@@ -88,6 +91,10 @@ class _OrdersScreenState extends State<OrdersScreen> {
   }
 
   Future<void> _bootstrap() async {
+    final voiceQ = widget.voiceMenuSearch?.trim();
+    if (voiceQ != null && voiceQ.isNotEmpty) {
+      _searchCtrl.text = voiceQ;
+    }
     await _menuSync.syncIfPossible();
     final cats = await _repo.loadCategories();
     final draft = _isEditMode ? <CartLine>[] : await _repo.loadDraft();

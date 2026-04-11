@@ -78,7 +78,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     contentPadding: EdgeInsets.zero,
                     title: const Text('Voice commands (Android)'),
                     subtitle: const Text(
-                      'Floating mic on every screen. Say “orders”, “kitchen”, “go back”, etc., or add phrases below.',
+                      'Mic on every screen. Examples: “go back”, “open table 3 in section indoor”, “punch a burger” (opens order screen with search). Add custom phrase = screen lines below.',
                     ),
                     value: VoiceSettings.instance.enabled,
                     onChanged: (v) async {

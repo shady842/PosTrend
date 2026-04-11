@@ -19,7 +19,17 @@ enum _ToolbarMode {
 }
 
 class TablesScreen extends StatefulWidget {
-  const TablesScreen({super.key});
+  const TablesScreen({
+    super.key,
+    this.voiceTableNumber,
+    this.voiceSectionHint,
+    this.voiceGuestCount = 2,
+  });
+
+  /// If set with [voiceTableNumber], opens that table after layout loads (voice / NLU).
+  final int? voiceTableNumber;
+  final String? voiceSectionHint;
+  final int voiceGuestCount;
 
   @override
   State<TablesScreen> createState() => _TablesScreenState();
@@ -40,6 +50,7 @@ class _TablesScreenState extends State<TablesScreen> {
   _ToolbarMode _mode = _ToolbarMode.normal;
   String? _transferOrderId;
   String? _mergeSourceOrderId;
+  bool _voiceHintConsumed = false;
 
   @override
   void initState() {
@@ -116,6 +127,9 @@ class _TablesScreenState extends State<TablesScreen> {
         _floorId = layout.sections.isNotEmpty ? layout.sections.first.id : null;
       }
     });
+    if (layout != null && mounted) {
+      unawaited(_tryConsumeVoiceHints(layout));
+    }
     if (fromConnectivity &&
         !fromRealtime &&
         mounted &&
@@ -160,35 +174,41 @@ class _TablesScreenState extends State<TablesScreen> {
     }
   }
 
-  Future<void> _openTableFlow(DiningTableTile table) async {
-    final guestCtrl = TextEditingController(text: '2');
-    final guests = await showDialog<int>(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: Text('Open ${table.name}'),
-          content: TextField(
-            controller: guestCtrl,
-            decoration: const InputDecoration(
-              labelText: 'Guest count',
-              border: OutlineInputBorder(),
+  Future<void> _openTableFlow(DiningTableTile table, {int? presetGuests}) async {
+    int guests;
+    if (presetGuests != null) {
+      guests = presetGuests.clamp(1, 99);
+    } else {
+      final guestCtrl = TextEditingController(text: '2');
+      final picked = await showDialog<int>(
+        context: context,
+        builder: (ctx) {
+          return AlertDialog(
+            title: Text('Open ${table.name}'),
+            content: TextField(
+              controller: guestCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Guest count',
+                border: OutlineInputBorder(),
+              ),
+              keyboardType: TextInputType.number,
             ),
-            keyboardType: TextInputType.number,
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            FilledButton(
-              onPressed: () {
-                final n = int.tryParse(guestCtrl.text.trim()) ?? 2;
-                Navigator.pop(ctx, n.clamp(1, 99));
-              },
-              child: const Text('Open'),
-            ),
-          ],
-        );
-      },
-    );
-    if (guests == null || !mounted) return;
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+              FilledButton(
+                onPressed: () {
+                  final n = int.tryParse(guestCtrl.text.trim()) ?? 2;
+                  Navigator.pop(ctx, n.clamp(1, 99));
+                },
+                child: const Text('Open'),
+              ),
+            ],
+          );
+        },
+      );
+      if (picked == null || !mounted) return;
+      guests = picked;
+    }
     final result = await _tables.openTable(table.id, guestCount: guests);
     if (!mounted) return;
     if (result == TableActionResult.applied) {
@@ -196,6 +216,7 @@ class _TablesScreenState extends State<TablesScreen> {
         SnackBar(content: Text('Opened ${table.name}')),
       );
       await _refresh();
+      if (!mounted) return;
       final matches = _layout?.sections
               .expand((s) => s.tables)
               .where((t) => t.id == table.id)
@@ -226,6 +247,97 @@ class _TablesScreenState extends State<TablesScreen> {
       );
     }
     await _refresh();
+  }
+
+  bool _tableNameMatchesNumber(String name, int n) {
+    return RegExp('\\b$n\\b').hasMatch(name.toLowerCase());
+  }
+
+  List<DiningTableTile> _tablesMatchingVoice(
+    BranchTableLayout layout,
+    int tableNum,
+    String? secHint,
+  ) {
+    final out = <DiningTableTile>[];
+    for (final s in layout.sections) {
+      if (secHint != null &&
+          secHint.isNotEmpty &&
+          !s.name.toLowerCase().contains(secHint)) {
+        continue;
+      }
+      for (final t in s.tables) {
+        if (_tableNameMatchesNumber(t.name, tableNum)) {
+          out.add(t);
+        }
+      }
+    }
+    return out;
+  }
+
+  Future<void> _tryConsumeVoiceHints(BranchTableLayout layout) async {
+    if (_voiceHintConsumed || !mounted) return;
+    final secHint = widget.voiceSectionHint?.trim().toLowerCase();
+    final tableNum = widget.voiceTableNumber;
+    if (tableNum == null && (secHint == null || secHint.isEmpty)) return;
+    _voiceHintConsumed = true;
+
+    if (secHint != null && secHint.isNotEmpty) {
+      FloorSection? foundSec;
+      for (final s in layout.sections) {
+        if (s.name.toLowerCase().contains(secHint)) {
+          foundSec = s;
+          break;
+        }
+      }
+      if (!mounted) return;
+      if (foundSec != null) {
+        setState(() => _floorId = foundSec!.id);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Showing section: ${foundSec.name}')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No section matching "$secHint"')),
+        );
+      }
+    }
+
+    if (tableNum == null || !mounted) return;
+
+    var candidates = _tablesMatchingVoice(layout, tableNum, secHint);
+    if (candidates.isEmpty && secHint != null && secHint.isNotEmpty) {
+      candidates = _tablesMatchingVoice(layout, tableNum, null);
+    }
+    if (candidates.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No table found for $tableNum')),
+      );
+      return;
+    }
+    if (candidates.length > 1) {
+      final names = candidates.map((e) => e.name).join(', ');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Multiple tables ($names). Say a clearer section name.')),
+      );
+      return;
+    }
+
+    final table = candidates.first;
+    final vis = visualStatusFor(table);
+    if (vis == TableVisualStatus.inactive) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${table.name} is inactive')),
+      );
+      return;
+    }
+    if (vis == TableVisualStatus.available || table.activeOrderId == null) {
+      await _openTableFlow(table, presetGuests: widget.voiceGuestCount);
+    } else if (table.activeOrderId != null) {
+      await _openOrder(table.activeOrderId!);
+    }
   }
 
   Future<void> _occupiedSheet(DiningTableTile table) async {

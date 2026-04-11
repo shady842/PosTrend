@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/navigation/app_navigator.dart';
+import 'voice_natural_intent.dart';
 import '../../presentation/widgets/payment_by_order_id_sheet.dart';
 import '../../presentation/screens/delivery_screen.dart';
 import '../../presentation/screens/journal_screen.dart';
@@ -107,6 +108,8 @@ class VoiceNavigation {
         return;
       }
     }
+
+    if (VoiceNaturalIntent.tryHandle(heard)) return;
 
     for (final pair in _pairs) {
       for (final phrase in pair.$1) {
