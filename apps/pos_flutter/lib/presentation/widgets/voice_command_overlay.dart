@@ -88,7 +88,7 @@ class _VoiceCommandOverlayState extends State<VoiceCommandOverlay> {
         }
         final raw = await storage.getVoiceShortcutsLines();
         final custom = parseVoiceShortcutLines(raw);
-        await VoiceNavigation.dispatch(heard: text, customPhraseToTarget: custom);
+        VoiceNavigation.dispatch(heard: text, customPhraseToTarget: custom);
         if (!mounted || !VoiceSettings.instance.continuous) break;
         await Future<void>.delayed(const Duration(milliseconds: 450));
       } while (VoiceSettings.instance.continuous && mounted && !_stopRequested);

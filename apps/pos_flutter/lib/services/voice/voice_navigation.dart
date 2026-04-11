@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/navigation/app_navigator.dart';
@@ -85,10 +87,11 @@ class VoiceNavigation {
     ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  static Future<void> dispatch({
+  /// Does not [await] route pushes so the global voice mic is free immediately after a command.
+  static void dispatch({
     required String heard,
     required Map<String, String> customPhraseToTarget,
-  }) async {
+  }) {
     final ctx = AppNavigator.maybeContext;
     if (ctx == null || !ctx.mounted) return;
 
@@ -100,7 +103,7 @@ class VoiceNavigation {
 
     for (final entry in customPhraseToTarget.entries) {
       if (phraseMatches(text, entry.key)) {
-        await _go(ctx, entry.value);
+        _go(ctx, entry.value);
         return;
       }
     }
@@ -108,7 +111,7 @@ class VoiceNavigation {
     for (final pair in _pairs) {
       for (final phrase in pair.$1) {
         if (phraseMatches(text, phrase)) {
-          await _go(ctx, pair.$2);
+          _go(ctx, pair.$2);
           return;
         }
       }
@@ -117,48 +120,63 @@ class VoiceNavigation {
     _snack('No match for: "$heard". Try "orders", "kitchen", "go back", or add shortcuts in Settings.');
   }
 
-  static Future<void> _go(BuildContext context, String target) async {
+  static void _go(BuildContext context, String target) {
     if (!context.mounted) return;
+    final nav = Navigator.of(context);
     switch (target) {
       case 'back':
-        await Navigator.of(context).maybePop();
+        unawaited(nav.maybePop());
         return;
       case 'orders':
-        await Navigator.of(context).push<void>(
-          MaterialPageRoute<void>(builder: (_) => const OrdersScreen()),
+        unawaited(
+          nav.push<void>(
+            MaterialPageRoute<void>(builder: (_) => const OrdersScreen()),
+          ),
         );
         return;
       case 'tables':
-        await Navigator.of(context).push<void>(
-          MaterialPageRoute<void>(builder: (_) => const TablesScreen()),
+        unawaited(
+          nav.push<void>(
+            MaterialPageRoute<void>(builder: (_) => const TablesScreen()),
+          ),
         );
         return;
       case 'delivery':
-        await Navigator.of(context).push<void>(
-          MaterialPageRoute<void>(builder: (_) => const DeliveryScreen()),
+        unawaited(
+          nav.push<void>(
+            MaterialPageRoute<void>(builder: (_) => const DeliveryScreen()),
+          ),
         );
         return;
       case 'payment':
-        await PaymentByOrderIdSheet.show(context);
+        unawaited(PaymentByOrderIdSheet.show(context));
         return;
       case 'kds':
-        await Navigator.of(context).push<void>(
-          MaterialPageRoute<void>(builder: (_) => const KdsScreen()),
+        unawaited(
+          nav.push<void>(
+            MaterialPageRoute<void>(builder: (_) => const KdsScreen()),
+          ),
         );
         return;
       case 'journal':
-        await Navigator.of(context).push<void>(
-          MaterialPageRoute<void>(builder: (_) => const JournalScreen()),
+        unawaited(
+          nav.push<void>(
+            MaterialPageRoute<void>(builder: (_) => const JournalScreen()),
+          ),
         );
         return;
       case 'shift':
-        await Navigator.of(context).push<void>(
-          MaterialPageRoute<void>(builder: (_) => const ShiftWizardScreen()),
+        unawaited(
+          nav.push<void>(
+            MaterialPageRoute<void>(builder: (_) => const ShiftWizardScreen()),
+          ),
         );
         return;
       case 'settings':
-        await Navigator.of(context).push<void>(
-          MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
+        unawaited(
+          nav.push<void>(
+            MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
+          ),
         );
         return;
       default:

@@ -19,44 +19,77 @@ class PosVoiceService {
     );
   }
 
+  /// Fully tear down the current listen so a new [listenOnce] can start reliably.
+  Future<void> resetSession() async {
+    if (!_initialized) return;
+    try {
+      if (_speech.isListening) {
+        await _speech.stop();
+      }
+    } catch (_) {
+      try {
+        await _speech.cancel();
+      } catch (_) {}
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 180));
+  }
+
   /// Returns recognized text, or null if unavailable / timeout / empty.
   Future<String?> listenOnce({Duration timeout = const Duration(seconds: 14)}) async {
     final ok = await ensureInitialized();
     if (!ok) return null;
 
+    await resetSession();
+
     final completer = Completer<String?>();
     Timer? timer;
+    String? lastPartial;
 
-    void complete(String? value) {
+    Future<void> finish(String? value) async {
       if (completer.isCompleted) return;
       timer?.cancel();
-      unawaited(_speech.stop());
-      completer.complete(value);
+      timer = null;
+      try {
+        if (_speech.isListening) {
+          await _speech.stop();
+        }
+      } catch (_) {
+        try {
+          await _speech.cancel();
+        } catch (_) {}
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      if (!completer.isCompleted) {
+        completer.complete(value);
+      }
     }
 
-    String? lastPartial;
     timer = Timer(timeout, () {
       final t = lastPartial?.trim();
-      complete(t != null && t.isNotEmpty ? t : null);
+      unawaited(finish(t != null && t.isNotEmpty ? t : null));
     });
 
-    await _speech.listen(
-      onResult: (result) {
-        lastPartial = result.recognizedWords.trim();
-        if (result.finalResult && lastPartial != null && lastPartial!.isNotEmpty) {
-          complete(lastPartial);
-        }
-      },
-      listenOptions: SpeechListenOptions(
-        partialResults: true,
-        cancelOnError: true,
-      ),
-    );
+    try {
+      await _speech.listen(
+        onResult: (result) {
+          lastPartial = result.recognizedWords.trim();
+          if (result.finalResult && lastPartial != null && lastPartial!.isNotEmpty) {
+            unawaited(finish(lastPartial));
+          }
+        },
+        listenOptions: SpeechListenOptions(
+          partialResults: true,
+          cancelOnError: true,
+        ),
+      );
+    } catch (_) {
+      await finish(null);
+    }
 
     return completer.future;
   }
 
   void cancel() {
-    unawaited(_speech.stop());
+    unawaited(resetSession());
   }
 }

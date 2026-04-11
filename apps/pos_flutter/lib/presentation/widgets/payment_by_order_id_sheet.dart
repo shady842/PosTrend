@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../screens/payment_screen.dart';
@@ -42,10 +44,12 @@ class PaymentByOrderIdSheet {
       );
       return;
     }
-    await Navigator.push<void>(
-      context,
-      MaterialPageRoute<void>(
-        builder: (_) => PaymentScreen(orderId: id),
+    unawaited(
+      Navigator.push<void>(
+        context,
+        MaterialPageRoute<void>(
+          builder: (_) => PaymentScreen(orderId: id),
+        ),
       ),
     );
   }
