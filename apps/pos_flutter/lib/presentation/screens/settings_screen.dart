@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/config/api_config.dart';
 import '../../core/storage/local_storage.dart';
 import '../../services/pos_realtime_sync.dart';
+import '../../services/voice/voice_settings.dart';
 import 'api_url_editor.dart';
 import 'cashier_login_screen.dart';
 import 'device_login_screen.dart';
@@ -17,7 +18,6 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final _storage = LocalStorage();
   final _voiceShortcuts = TextEditingController();
-  bool _voiceEnabled = false;
   bool _loaded = false;
 
   @override
@@ -27,11 +27,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _load() async {
-    final v = await _storage.getVoiceCommandsEnabled();
+    await VoiceSettings.instance.load();
     final lines = await _storage.getVoiceShortcutsLines();
     if (!mounted) return;
     setState(() {
-      _voiceEnabled = v;
       _voiceShortcuts.text = lines;
       _loaded = true;
     });
@@ -41,12 +40,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void dispose() {
     _voiceShortcuts.dispose();
     super.dispose();
-  }
-
-  Future<void> _setVoice(bool value) async {
-    await _storage.setVoiceCommandsEnabled(value);
-    if (!mounted) return;
-    setState(() => _voiceEnabled = value);
   }
 
   Future<void> _saveShortcuts() async {
@@ -85,10 +78,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     contentPadding: EdgeInsets.zero,
                     title: const Text('Voice commands (Android)'),
                     subtitle: const Text(
-                      'Mic button on POS Home listens once per tap. Say things like “orders”, “kitchen”, “payment”, or add your own phrases below.',
+                      'Floating mic on every screen. Say “orders”, “kitchen”, “go back”, etc., or add phrases below.',
                     ),
-                    value: _voiceEnabled,
-                    onChanged: _setVoice,
+                    value: VoiceSettings.instance.enabled,
+                    onChanged: (v) async {
+                      await VoiceSettings.instance.setEnabled(v);
+                      if (mounted) setState(() {});
+                    },
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Hands-free (continuous listening)'),
+                    subtitle: const Text(
+                      'After each command, listen again until you say “stop listening” or tap Stop.',
+                    ),
+                    value: VoiceSettings.instance.continuous,
+                    onChanged: VoiceSettings.instance.enabled
+                        ? (v) async {
+                            await VoiceSettings.instance.setContinuous(v);
+                            if (mounted) setState(() {});
+                          }
+                        : null,
                   ),
                   const SizedBox(height: 8),
                   Text(

@@ -14,5 +14,6 @@ class AppConstants {
   static const deviceSecretKey = 'pt_pos_device_secret';
   static const deviceAuthTokenKey = 'pt_pos_device_auth_token';
   static const voiceCommandsEnabledKey = 'pt_pos_voice_commands_enabled';
+  static const voiceContinuousEnabledKey = 'pt_pos_voice_continuous_enabled';
   static const voiceShortcutsLinesKey = 'pt_pos_voice_shortcuts_lines';
 }

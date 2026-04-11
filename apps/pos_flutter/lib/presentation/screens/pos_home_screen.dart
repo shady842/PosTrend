@@ -1,19 +1,16 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../../core/network/connectivity_service.dart';
-import '../../core/storage/local_storage.dart';
 import '../../services/pos_realtime_sync.dart';
-import '../../services/voice/pos_voice_service.dart';
-import '../../services/voice/voice_navigation.dart';
+import '../../services/voice/voice_settings.dart';
 import '../../widgets/large_touch_button.dart';
-import 'kds_screen.dart';
+import '../widgets/payment_by_order_id_sheet.dart';
 import 'delivery_screen.dart';
 import 'journal_screen.dart';
+import 'kds_screen.dart';
 import 'orders_screen.dart';
-import 'payment_screen.dart';
 import 'settings_screen.dart';
 import 'shift_wizard_screen.dart';
 import 'tables_screen.dart';
@@ -26,97 +23,11 @@ class PosHomeScreen extends StatefulWidget {
 }
 
 class _PosHomeScreenState extends State<PosHomeScreen> {
-  final _storage = LocalStorage();
   bool _online = true;
-  bool _voiceCommandsEnabled = false;
-  bool _voiceListening = false;
-
-  Future<void> _openPaymentByOrderId() async {
-    final ctrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Take payment'),
-        content: TextField(
-          controller: ctrl,
-          decoration: const InputDecoration(
-            labelText: 'Order ID',
-            hintText: 'Paste server order UUID',
-            border: OutlineInputBorder(),
-          ),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Open'),
-          ),
-        ],
-      ),
-    );
-    if (!mounted || ok != true) return;
-    final id = ctrl.text.trim();
-    if (id.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter an order ID')),
-      );
-      return;
-    }
-    await Navigator.push<void>(
-      context,
-      MaterialPageRoute<void>(
-        builder: (_) => PaymentScreen(orderId: id),
-      ),
-    );
-  }
-
-  Future<void> _reloadVoicePref() async {
-    final v = await _storage.getVoiceCommandsEnabled();
-    if (mounted) setState(() => _voiceCommandsEnabled = v);
-  }
-
-  Future<void> _onVoiceMicPressed() async {
-    if (_voiceListening) return;
-    setState(() => _voiceListening = true);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Listening… speak a command (e.g. “orders”, “kitchen”).'),
-          duration: Duration(seconds: 14),
-        ),
-      );
-    }
-    try {
-      final text = await PosVoiceService.instance.listenOnce();
-      if (!mounted) return;
-      if (text == null || text.trim().isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No speech heard — try again')),
-        );
-        return;
-      }
-      final raw = await _storage.getVoiceShortcutsLines();
-      if (!mounted) return;
-      final custom = parseVoiceShortcutLines(raw);
-      await VoiceNavigation.dispatch(
-        context: context,
-        heard: text,
-        customPhraseToTarget: custom,
-        openPaymentFlow: _openPaymentByOrderId,
-      );
-    } finally {
-      if (mounted) setState(() => _voiceListening = false);
-    }
-  }
 
   @override
   void initState() {
     super.initState();
-    unawaited(_reloadVoicePref());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(PosRealtimeSync.instance.start());
     });
@@ -128,22 +39,7 @@ class _PosHomeScreenState extends State<PosHomeScreen> {
   @override
   Widget build(BuildContext context) {
     final isTablet = MediaQuery.of(context).size.shortestSide >= 600;
-    final showVoiceFab =
-        !kIsWeb && defaultTargetPlatform == TargetPlatform.android && _voiceCommandsEnabled;
-
     return Scaffold(
-      floatingActionButton: showVoiceFab
-          ? FloatingActionButton.large(
-              onPressed: _voiceListening ? null : _onVoiceMicPressed,
-              tooltip: 'Voice command',
-              child: _voiceListening
-                  ? const Padding(
-                      padding: EdgeInsets.all(16),
-                      child: CircularProgressIndicator(strokeWidth: 3, color: Colors.white),
-                    )
-                  : const Icon(Icons.mic),
-            )
-          : null,
       appBar: AppBar(
         title: const Text('POS Home'),
         actions: [
@@ -229,7 +125,7 @@ class _PosHomeScreenState extends State<PosHomeScreen> {
                 label: 'Payment',
                 icon: Icons.payments,
                 color: Colors.purple,
-                onPressed: _openPaymentByOrderId,
+                onPressed: () => PaymentByOrderIdSheet.show(context),
               ),
               LargeTouchButton(
                 label: 'KDS',
@@ -267,7 +163,8 @@ class _PosHomeScreenState extends State<PosHomeScreen> {
                     context,
                     MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
                   );
-                  await _reloadVoicePref();
+                  await VoiceSettings.instance.load();
+                  if (mounted) setState(() {});
                 },
               ),
             ],

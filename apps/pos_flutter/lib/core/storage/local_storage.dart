@@ -187,6 +187,16 @@ class LocalStorage {
     return p.getString(AppConstants.voiceShortcutsLinesKey) ?? '';
   }
 
+  Future<void> setVoiceContinuousEnabled(bool value) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setBool(AppConstants.voiceContinuousEnabledKey, value);
+  }
+
+  Future<bool> getVoiceContinuousEnabled() async {
+    final p = await SharedPreferences.getInstance();
+    return p.getBool(AppConstants.voiceContinuousEnabledKey) ?? false;
+  }
+
   Future<void> clearSession() async {
     final p = await SharedPreferences.getInstance();
     await p.remove(AppConstants.jwtKey);

@@ -5,10 +5,12 @@ import 'app.dart';
 import 'bootstrap/sqlite_bootstrap.dart';
 import 'core/config/api_config.dart';
 import 'core/storage/local_storage.dart';
+import 'services/voice/voice_settings.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await bootstrapSqlite();
+  await VoiceSettings.instance.load();
   final savedApi = await LocalStorage().getApiBaseUrl();
   if (savedApi != null && savedApi.isNotEmpty) {
     ApiConfig.setRuntimeBaseUrl(savedApi);

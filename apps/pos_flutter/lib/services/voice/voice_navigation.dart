@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/navigation/app_navigator.dart';
+import '../../presentation/widgets/payment_by_order_id_sheet.dart';
 import '../../presentation/screens/delivery_screen.dart';
 import '../../presentation/screens/journal_screen.dart';
 import '../../presentation/screens/kds_screen.dart';
@@ -37,10 +39,19 @@ Map<String, String> parseVoiceShortcutLines(String raw) {
   return out;
 }
 
-typedef OpenPaymentFlow = Future<void> Function();
-
-/// Maps spoken text to navigation on the POS home stack.
 class VoiceNavigation {
+  VoiceNavigation._();
+
+  /// Multi-word phrases use substring match; short single words use word boundaries to reduce false positives.
+  static bool phraseMatches(String haystack, String phrase) {
+    final h = haystack.toLowerCase().trim();
+    final p = phrase.toLowerCase().trim();
+    if (p.isEmpty) return false;
+    if (p.contains(' ')) return h.contains(p);
+    if (p.length <= 2) return h.contains(p);
+    return RegExp(r'\b' + RegExp.escape(p) + r'\b').hasMatch(h);
+  }
+
   static const _pairs = <(List<String>, String)>[
     (['orders', 'order list', 'open orders', 'receipt', 'tickets'], 'orders'),
     (['tables', 'floor plan', 'dine in', 'dining', 'seating'], 'tables'),
@@ -50,59 +61,67 @@ class VoiceNavigation {
     (['journal', 'closed checks', 'history', 'day book'], 'journal'),
     (['shift', 'open shift', 'close shift', 'cash drawer', 'z report'], 'shift'),
     (['settings', 'setup', 'configuration', 'printer'], 'settings'),
-    (['go back', 'go home', 'home screen', 'close screen', 'pop', 'cancel screen'], 'back'),
+    (
+      [
+        'go back',
+        'go home',
+        'take me back',
+        'navigate back',
+        'back one screen',
+        'close screen',
+        'cancel screen',
+        'return',
+        'previous',
+        'pop',
+        'back',
+      ],
+      'back',
+    ),
   ];
 
+  static void _snack(String message) {
+    final ctx = AppNavigator.maybeContext;
+    if (ctx == null || !ctx.mounted) return;
+    ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   static Future<void> dispatch({
-    required BuildContext context,
     required String heard,
     required Map<String, String> customPhraseToTarget,
-    required OpenPaymentFlow openPaymentFlow,
   }) async {
-    if (!context.mounted) return;
+    final ctx = AppNavigator.maybeContext;
+    if (ctx == null || !ctx.mounted) return;
+
     final text = heard.toLowerCase().trim();
     if (text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No speech captured — try again')),
-      );
+      _snack('No speech captured — try again');
       return;
     }
 
     for (final entry in customPhraseToTarget.entries) {
-      if (text.contains(entry.key)) {
-        await _go(context, entry.value, openPaymentFlow);
+      if (phraseMatches(text, entry.key)) {
+        await _go(ctx, entry.value);
         return;
       }
     }
 
     for (final pair in _pairs) {
       for (final phrase in pair.$1) {
-        if (text.contains(phrase)) {
-          await _go(context, pair.$2, openPaymentFlow);
+        if (phraseMatches(text, phrase)) {
+          await _go(ctx, pair.$2);
           return;
         }
       }
     }
 
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('No match for: "$heard". Try a screen name (orders, tables, kds, …) or add shortcuts in Settings.'),
-      ),
-    );
+    _snack('No match for: "$heard". Try "orders", "kitchen", "go back", or add shortcuts in Settings.');
   }
 
-  static Future<void> _go(
-    BuildContext context,
-    String target,
-    OpenPaymentFlow openPaymentFlow,
-  ) async {
+  static Future<void> _go(BuildContext context, String target) async {
     if (!context.mounted) return;
     switch (target) {
       case 'back':
-        if (Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        }
+        await Navigator.of(context).maybePop();
         return;
       case 'orders':
         await Navigator.of(context).push<void>(
@@ -120,7 +139,7 @@ class VoiceNavigation {
         );
         return;
       case 'payment':
-        await openPaymentFlow();
+        await PaymentByOrderIdSheet.show(context);
         return;
       case 'kds':
         await Navigator.of(context).push<void>(
